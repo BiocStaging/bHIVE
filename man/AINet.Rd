@@ -3,6 +3,11 @@
 \name{AINet}
 \alias{AINet}
 \title{AINet}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{AINet$new()} returns
+  an \code{AINet} object. Call \code{$fit()} on it to train, then
+  \code{$predict()} to label new data.
+}
 \description{
 R6 implementation of the Artificial Immune Network algorithm.
 This is the core bHIVE algorithm using C++ backends for performance-critical
@@ -40,8 +45,8 @@ preds <- model2$predict(X[1:10, ])
 \if{html}{\out{
 <details open><summary>Inherited methods</summary>
 <ul>
+<li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="format"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-format'><code>bHIVE::ImmuneAlgorithm$format()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="predict"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-predict'><code>bHIVE::ImmuneAlgorithm$predict()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="print"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-print'><code>bHIVE::ImmuneAlgorithm$print()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="summary"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-summary'><code>bHIVE::ImmuneAlgorithm$summary()</code></a></span></li>
 </ul>
 </details>

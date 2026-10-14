@@ -60,3 +60,18 @@ test_that("ImmuneAlgorithm$summary returns data frame after fitting", {
   expect_true("n_antibodies" %in% names(s))
   expect_equal(nrow(s), length(model$history))
 })
+
+test_that("every R6 class prints through its format() method", {
+  objs <- list(ActivationGate$new(), AINet$new(verbose = FALSE),
+               ClassSwitcher$new(), ConvergentSelector$new(),
+               GerminalCenter$new(), IdiotypicNetwork$new(),
+               ImmuneAlgorithm$new(), ImmuneRepertoire$new(diag(3)),
+               MemoryPool$new(), Microenvironment$new(),
+               SHMEngine$new(), VDJLibrary$new())
+  for (o in objs) {
+    out <- format(o)
+    expect_type(out, "character")
+    expect_match(out[1], paste0("^<", class(o)[1], ">"))
+    expect_identical(capture.output(print(o)), out)
+  }
+})

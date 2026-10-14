@@ -27,6 +27,9 @@
 #' @param alpha_IgG Numeric. Kernel width for specific matching.
 #' @param alpha_IgA Numeric. Kernel width for boundary matching.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{ClassSwitcher$new()}
+#'   returns a \code{ClassSwitcher} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 ClassSwitcher <- R6::R6Class(
@@ -97,14 +100,15 @@ ClassSwitcher <- R6::R6Class(
       )
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat("<ClassSwitcher>\n")
-      cat(sprintf("  IgM (broad):    alpha = %.3f\n", self$alpha_IgM))
-      cat(sprintf("  IgG (specific): alpha = %.3f\n", self$alpha_IgG))
-      cat(sprintf("  IgA (boundary): alpha = %.3f\n", self$alpha_IgA))
-      invisible(self)
+    #' @return A character vector.
+    format = function(...) {
+      c("<ClassSwitcher>",
+        sprintf("  IgM (broad):    alpha = %.3f", self$alpha_IgM),
+        sprintf("  IgG (specific): alpha = %.3f", self$alpha_IgG),
+        sprintf("  IgA (boundary): alpha = %.3f", self$alpha_IgA))
     }
   )
 )

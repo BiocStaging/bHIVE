@@ -20,6 +20,10 @@
 #' # Predict on new data
 #' preds <- model2$predict(X[1:10, ])
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{AINet$new()} returns
+#'   an \code{AINet} object. Call \code{$fit()} on it to train, then
+#'   \code{$predict()} to label new data.
+#'
 #' @importFrom R6 R6Class
 #' @importFrom stats rnorm runif sd quantile
 #' @export

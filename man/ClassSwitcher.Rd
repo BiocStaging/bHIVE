@@ -3,6 +3,10 @@
 \name{ClassSwitcher}
 \alias{ClassSwitcher}
 \title{ClassSwitcher}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{ClassSwitcher$new()}
+  returns a \code{ClassSwitcher} object.
+}
 \description{
 Implements antibody isotype/class switching, allowing antibodies
 to change their matching breadth. Inspired by real B cell class switching
@@ -46,7 +50,7 @@ table(rep$metadata$isotype)  # IgM, IgG, IgA distribution
 \item \href{#method-ClassSwitcher-new}{\code{ClassSwitcher$new()}}
 \item \href{#method-ClassSwitcher-switch_isotypes}{\code{ClassSwitcher$switch_isotypes()}}
 \item \href{#method-ClassSwitcher-get_alpha}{\code{ClassSwitcher$get_alpha()}}
-\item \href{#method-ClassSwitcher-print}{\code{ClassSwitcher$print()}}
+\item \href{#method-ClassSwitcher-format}{\code{ClassSwitcher$format()}}
 \item \href{#method-ClassSwitcher-clone}{\code{ClassSwitcher$clone()}}
 }
 }
@@ -115,12 +119,13 @@ Numeric.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-ClassSwitcher-print"></a>}}
-\if{latex}{\out{\hypertarget{method-ClassSwitcher-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-ClassSwitcher-format"></a>}}
+\if{latex}{\out{\hypertarget{method-ClassSwitcher-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ClassSwitcher$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ClassSwitcher$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -129,6 +134,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

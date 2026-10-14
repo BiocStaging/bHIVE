@@ -31,6 +31,9 @@
 #' @param threshold2 Numeric. Minimum Signal 2 threshold.
 #' @param danger_signals Numeric vector. Per-data-point danger scores.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{ActivationGate$new()}
+#'   returns an \code{ActivationGate} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 ActivationGate <- R6::R6Class(
@@ -79,57 +82,68 @@ ActivationGate <- R6::R6Class(
       signal1 <- affinity_matrix > self$threshold1
 
       # Signal 2: costimulatory context
-      signal2 <- matrix(FALSE, nrow = n, ncol = m)
-
-      if (self$signal2_type == "density") {
-        # Local density: for each data point, density = sum of affinities to all antibodies
-        density_per_point <- rowSums(affinity_matrix)
-        density_threshold <- quantile(density_per_point, self$threshold2)
-        dense_points <- density_per_point > density_threshold
-        signal2[dense_points, ] <- TRUE
-
-      } else if (self$signal2_type == "danger") {
-        if (is.null(self$danger_signals)) {
-          stop("danger_signals must be provided for signal2_type='danger'")
-        }
-        danger_pass <- self$danger_signals > self$threshold2
-        signal2[danger_pass, ] <- TRUE
-
-      } else if (self$signal2_type == "entropy") {
-        if (is.null(y) || task != "classification") {
-          # Fall back to density for non-classification tasks
-          density_per_point <- rowSums(affinity_matrix)
-          density_threshold <- quantile(density_per_point, self$threshold2)
-          signal2[density_per_point > density_threshold, ] <- TRUE
-        } else {
-          # For each antibody, compute label entropy of nearby data
-          assignments <- apply(affinity_matrix, 1, which.max)
-          for (j in seq_len(m)) {
-            assigned <- which(assignments == j)
-            if (length(assigned) > 1) {
-              labels <- y[assigned]
-              freqs <- table(labels) / length(labels)
-              entropy <- -sum(freqs * log(freqs + 1e-15))
-              # Lower entropy = more pure = better context
-              if (entropy < self$threshold2) {
-                signal2[assigned, j] <- TRUE
-              }
-            }
+      signal2 <- switch(self$signal2_type,
+        density = .gate_density_signal(affinity_matrix, self$threshold2),
+        danger  = {
+          if (is.null(self$danger_signals)) {
+            stop("danger_signals must be provided for signal2_type='danger'")
           }
-        }
-      }
+          matrix(self$danger_signals > self$threshold2, nrow = n, ncol = m)
+        },
+        entropy = if (is.null(y) || task != "classification") {
+          # Fall back to density for non-classification tasks
+          .gate_density_signal(affinity_matrix, self$threshold2)
+        } else {
+          .gate_entropy_signal(affinity_matrix, y, self$threshold2)
+        })
 
       # Both signals must pass
       signal1 & signal2
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat(sprintf("<ActivationGate> signal2='%s'\n", self$signal2_type))
-      cat(sprintf("  Threshold1 (affinity): %.3f\n", self$threshold1))
-      cat(sprintf("  Threshold2 (context):  %.3f\n", self$threshold2))
-      invisible(self)
+    #' @return A character vector.
+    format = function(...) {
+      c(sprintf("<ActivationGate> signal2='%s'", self$signal2_type),
+        sprintf("  Threshold1 (affinity): %.3f", self$threshold1),
+        sprintf("  Threshold2 (context):  %.3f", self$threshold2))
     }
   )
 )
+
+
+#' Signal 2 by data density
+#'
+#' A data point passes (for every antibody) when its summed affinity to all
+#' antibodies is above the q-th quantile.
+#' @keywords internal
+#' @noRd
+.gate_density_signal <- function(affinity_matrix, q) {
+  density_per_point <- rowSums(affinity_matrix)
+  dense <- density_per_point > quantile(density_per_point, q)
+  matrix(dense, nrow = nrow(affinity_matrix), ncol = ncol(affinity_matrix))
+}
+
+#' Signal 2 by label purity
+#'
+#' Each data point is assigned to its best-binding antibody. The pair passes
+#' when the label entropy of that antibody's points is below the threshold
+#' (lower entropy means a purer, more trustworthy context).
+#' @keywords internal
+#' @noRd
+.gate_entropy_signal <- function(affinity_matrix, y, threshold) {
+  signal2 <- matrix(FALSE, nrow = nrow(affinity_matrix),
+                    ncol = ncol(affinity_matrix))
+  assignments <- apply(affinity_matrix, 1, which.max)
+  for (j in seq_len(ncol(affinity_matrix))) {
+    assigned <- which(assignments == j)
+    if (length(assigned) > 1) {
+      freqs <- table(y[assigned]) / length(assigned)
+      entropy <- -sum(freqs * log(freqs + 1e-15))
+      if (entropy < threshold) signal2[assigned, j] <- TRUE
+    }
+  }
+  signal2
+}

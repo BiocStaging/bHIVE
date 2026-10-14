@@ -25,6 +25,9 @@
 #' @param cells Numeric matrix (nAntibodies x nFeatures).
 #' @param metadata Optional data frame with columns: isotype, state, age, lineage.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator.
+#'   \code{ImmuneRepertoire$new()} returns an \code{ImmuneRepertoire} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 ImmuneRepertoire <- R6::R6Class(
@@ -163,16 +166,21 @@ ImmuneRepertoire <- R6::R6Class(
     #' @return Numeric matrix (nAntibodies x nFeatures).
     as_matrix = function() self$cells,
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat(sprintf("<ImmuneRepertoire> %d antibodies x %d features\n",
-                  self$size(), self$n_features()))
+    #' @return A character vector.
+    format = function(...) {
+      out <- sprintf("<ImmuneRepertoire> %d antibodies x %d features",
+                     self$size(), self$n_features())
       if (self$size() > 0) {
-        cat("  Isotypes:", paste(table(self$metadata$isotype), collapse=", "), "\n")
-        cat("  States:  ", paste(table(self$metadata$state), collapse=", "), "\n")
+        out <- c(out,
+                 paste("  Isotypes:",
+                       paste(table(self$metadata$isotype), collapse = ", ")),
+                 paste("  States:  ",
+                       paste(table(self$metadata$state), collapse = ", ")))
       }
-      invisible(self)
+      out
     }
   ),
 

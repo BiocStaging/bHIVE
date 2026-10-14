@@ -35,6 +35,9 @@
 #' @param beta2 Numeric. Second moment decay (adaptive method, like Adam).
 #' @param adam_epsilon Numeric. Numerical stability (adaptive method).
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{SHMEngine$new()}
+#'   returns an \code{SHMEngine} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 SHMEngine <- R6::R6Class(
@@ -102,17 +105,20 @@ SHMEngine <- R6::R6Class(
     #' @description Initialize internal state for adaptive method.
     #' @param nAntibodies Integer. Number of antibodies.
     #' @param nFeatures Integer. Number of features.
+    #' @return The engine, invisibly, with its moment state set.
     init_state = function(nAntibodies, nFeatures) {
       if (self$method == "adaptive") {
         self$m1_state <- matrix(0, nrow = nAntibodies, ncol = nFeatures)
         self$m2_state <- matrix(0, nrow = nAntibodies, ncol = nFeatures)
       }
+      invisible(self)
     },
 
     #' @description Reset moment states (e.g., after suppression changes antibody count).
     #' @param nAntibodies Integer. New number of antibodies.
     #' @param nFeatures Integer. Number of features.
     #' @param kept_idx Integer vector. Indices of antibodies that were kept.
+    #' @return The engine, invisibly, with its moment state reset or subset.
     reset_state = function(nAntibodies, nFeatures, kept_idx = NULL) {
       if (self$method == "adaptive") {
         if (!is.null(kept_idx) && !is.null(self$m1_state)) {
@@ -123,12 +129,14 @@ SHMEngine <- R6::R6Class(
           self$m2_state <- matrix(0, nrow = nAntibodies, ncol = nFeatures)
         }
       }
+      invisible(self)
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat(sprintf("<SHMEngine> method='%s'\n", self$method))
+    #' @return A character vector.
+    format = function(...) {
       key_params <- switch(self$method,
         "uniform"  = c("decay", "mutationMin"),
         "airs"     = c("c_rate", "temperature"),
@@ -136,10 +144,10 @@ SHMEngine <- R6::R6Class(
         "energy"   = c("E_0"),
         "adaptive" = c("base_rate", "beta1", "beta2")
       )
-      for (p in key_params) {
-        cat(sprintf("  %s: %s\n", p, self$params[[p]]))
-      }
-      invisible(self)
+      c(sprintf("<SHMEngine> method='%s'", self$method),
+        vapply(key_params, function(p) {
+          sprintf("  %s: %s", p, self$params[[p]])
+        }, character(1), USE.NAMES = FALSE))
     }
   )
 )

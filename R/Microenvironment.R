@@ -35,6 +35,9 @@
 #' @param stabilization_factor Numeric. Mutation rate multiplier for stable zones.
 #' @param exploration_factor Numeric. Mutation rate multiplier for exploration zones.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator.
+#'   \code{Microenvironment$new()} returns a \code{Microenvironment} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 Microenvironment <- R6::R6Class(
@@ -117,16 +120,8 @@ Microenvironment <- R6::R6Class(
       mutation_modifiers[zones == "explore"] <- self$exploration_factor
       mutation_modifiers[zones == "boundary"] <- 1.0  # neutral
 
-      # Compute gradient direction (mean direction toward data from each antibody)
-      # Weighted by affinity -- chemokine-like attraction
-      gradients <- matrix(0, nrow = m, ncol = ncol(A))
-      for (j in seq_len(m)) {
-        weights <- aff[, j]
-        total_w <- sum(weights)
-        if (total_w > 0) {
-          gradients[j, ] <- colSums(sweep(X, 2, A[j, ], `-`) * weights) / total_w
-        }
-      }
+      # Affinity-weighted mean direction toward the data (chemokine-like)
+      gradients <- .microenv_gradients(X, A, aff)
 
       # Update metadata states
       repertoire$metadata$state[zones == "stable"]   <- "memory"
@@ -144,18 +139,41 @@ Microenvironment <- R6::R6Class(
       )
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat("<Microenvironment>\n")
-      cat(sprintf("  Density thresholds: [%.2f, %.2f] percentile\n",
-                  self$low_density_threshold, self$high_density_threshold))
-      cat(sprintf("  Stabilization: %.2fx  Exploration: %.2fx\n",
-                  self$stabilization_factor, self$exploration_factor))
+    #' @return A character vector.
+    format = function(...) {
+      out <- c("<Microenvironment>",
+               sprintf("  Density thresholds: [%.2f, %.2f] percentile",
+                       self$low_density_threshold,
+                       self$high_density_threshold),
+               sprintf("  Stabilization: %.2fx  Exploration: %.2fx",
+                       self$stabilization_factor, self$exploration_factor))
       if (!is.null(self$last_zones)) {
-        cat("  Last assessment:", paste(table(self$last_zones), collapse=", "), "\n")
+        out <- c(out, paste("  Last assessment:",
+                            paste(table(self$last_zones), collapse = ", ")))
       }
-      invisible(self)
+      out
     }
   )
 )
+
+
+#' Affinity-weighted mean direction from each antibody toward the data
+#'
+#' Row j is sum_i w_ij (x_i - a_j) / sum_i w_ij with w_ij the affinity of
+#' data point i to antibody j, or zero when antibody j binds nothing.
+#' @keywords internal
+#' @noRd
+.microenv_gradients <- function(X, A, aff) {
+  gradients <- matrix(0, nrow = nrow(A), ncol = ncol(A))
+  for (j in seq_len(nrow(A))) {
+    weights <- aff[, j]
+    total_w <- sum(weights)
+    if (total_w > 0) {
+      gradients[j, ] <- colSums(sweep(X, 2, A[j, ], `-`) * weights) / total_w
+    }
+  }
+  gradients
+}

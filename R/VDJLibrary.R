@@ -31,6 +31,9 @@
 #' @param nJ Integer. Number of J gene alleles.
 #' @param method Character. "pca", "cluster", or "random_partition".
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{VDJLibrary$new()}
+#'   returns a \code{VDJLibrary} object.
+#'
 #' @importFrom R6 R6Class
 #' @importFrom stats prcomp kmeans
 #' @export
@@ -107,16 +110,19 @@ VDJLibrary <- R6::R6Class(
       A
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat(sprintf("<VDJLibrary> method='%s' V=%d D=%d J=%d\n",
-                  self$method, self$nV, self$nD, self$nJ))
+    #' @return A character vector.
+    format = function(...) {
+      out <- sprintf("<VDJLibrary> method='%s' V=%d D=%d J=%d",
+                     self$method, self$nV, self$nD, self$nJ)
       if (!is.null(self$library)) {
-        cat(sprintf("  Combinatorial space: %d antibodies\n",
-                    nrow(self$library$V) * nrow(self$library$D) * nrow(self$library$J)))
+        lib <- self$library
+        out <- c(out, sprintf("  Combinatorial space: %d antibodies",
+                              nrow(lib$V) * nrow(lib$D) * nrow(lib$J)))
       }
-      invisible(self)
+      out
     }
   ),
 

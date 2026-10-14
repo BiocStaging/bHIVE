@@ -3,6 +3,10 @@
 \name{ConvergentSelector}
 \alias{ConvergentSelector}
 \title{ConvergentSelector}
+\value{
+An \code{\link[R6]{R6Class}} generator.
+  \code{ConvergentSelector$new()} returns a \code{ConvergentSelector} object.
+}
 \description{
 Identifies "public antibodies" shared across independent
 repertoires, implementing the concept of convergent selection from TCR/BCR
@@ -46,7 +50,7 @@ in to be considered "public".}
 \item \href{#method-ConvergentSelector-new}{\code{ConvergentSelector$new()}}
 \item \href{#method-ConvergentSelector-find_public}{\code{ConvergentSelector$find_public()}}
 \item \href{#method-ConvergentSelector-from_results}{\code{ConvergentSelector$from_results()}}
-\item \href{#method-ConvergentSelector-print}{\code{ConvergentSelector$print()}}
+\item \href{#method-ConvergentSelector-format}{\code{ConvergentSelector$format()}}
 \item \href{#method-ConvergentSelector-clone}{\code{ConvergentSelector$clone()}}
 }
 }
@@ -115,12 +119,13 @@ Numeric matrix of consensus antibodies.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-ConvergentSelector-print"></a>}}
-\if{latex}{\out{\hypertarget{method-ConvergentSelector-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-ConvergentSelector-format"></a>}}
+\if{latex}{\out{\hypertarget{method-ConvergentSelector-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ConvergentSelector$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ConvergentSelector$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -129,6 +134,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

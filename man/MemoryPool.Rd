@@ -3,6 +3,10 @@
 \name{MemoryPool}
 \alias{MemoryPool}
 \title{MemoryPool}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{MemoryPool$new()}
+  returns a \code{MemoryPool} object.
+}
 \description{
 Manages long-lived memory cells that can be recalled when
 distribution shifts are detected. Implements the immunological distinction
@@ -44,7 +48,7 @@ antibodies become memory).}
 \item \href{#method-MemoryPool-archive}{\code{MemoryPool$archive()}}
 \item \href{#method-MemoryPool-recall}{\code{MemoryPool$recall()}}
 \item \href{#method-MemoryPool-size}{\code{MemoryPool$size()}}
-\item \href{#method-MemoryPool-print}{\code{MemoryPool$print()}}
+\item \href{#method-MemoryPool-format}{\code{MemoryPool$format()}}
 \item \href{#method-MemoryPool-clone}{\code{MemoryPool$clone()}}
 }
 }
@@ -146,12 +150,13 @@ Integer.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-MemoryPool-print"></a>}}
-\if{latex}{\out{\hypertarget{method-MemoryPool-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-MemoryPool-format"></a>}}
+\if{latex}{\out{\hypertarget{method-MemoryPool-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{MemoryPool$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{MemoryPool$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -160,6 +165,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

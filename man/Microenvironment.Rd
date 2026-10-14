@@ -3,6 +3,10 @@
 \name{Microenvironment}
 \alias{Microenvironment}
 \title{Microenvironment}
+\value{
+An \code{\link[R6]{R6Class}} generator.
+  \code{Microenvironment$new()} returns a \code{Microenvironment} object.
+}
 \description{
 Models local microenvironment cues that influence antibody
 behavior based on the density and structure of nearby data points.
@@ -59,7 +63,7 @@ env$mutation_modifiers  # per-antibody rate scaling
 \itemize{
 \item \href{#method-Microenvironment-new}{\code{Microenvironment$new()}}
 \item \href{#method-Microenvironment-assess}{\code{Microenvironment$assess()}}
-\item \href{#method-Microenvironment-print}{\code{Microenvironment$print()}}
+\item \href{#method-Microenvironment-format}{\code{Microenvironment$format()}}
 \item \href{#method-Microenvironment-clone}{\code{Microenvironment$clone()}}
 }
 }
@@ -126,12 +130,13 @@ Named list with densities, zones, and mutation_modifiers per antibody.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-Microenvironment-print"></a>}}
-\if{latex}{\out{\hypertarget{method-Microenvironment-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-Microenvironment-format"></a>}}
+\if{latex}{\out{\hypertarget{method-Microenvironment-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{Microenvironment$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{Microenvironment$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -140,6 +145,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

@@ -3,6 +3,10 @@
 \name{GerminalCenter}
 \alias{GerminalCenter}
 \title{GerminalCenter}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{GerminalCenter$new()}
+  returns a \code{GerminalCenter} object.
+}
 \description{
 Models T follicular helper (Tfh) cell selection pressure on
 B cells within a germinal center reaction. Implements resource competition
@@ -50,7 +54,7 @@ to the input repertoire) from the most recent call to \code{select()}.}
 \itemize{
 \item \href{#method-GerminalCenter-new}{\code{GerminalCenter$new()}}
 \item \href{#method-GerminalCenter-select}{\code{GerminalCenter$select()}}
-\item \href{#method-GerminalCenter-print}{\code{GerminalCenter$print()}}
+\item \href{#method-GerminalCenter-format}{\code{GerminalCenter$format()}}
 \item \href{#method-GerminalCenter-clone}{\code{GerminalCenter$clone()}}
 }
 }
@@ -116,12 +120,13 @@ Integer vector of survivor indices relative to the input
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-GerminalCenter-print"></a>}}
-\if{latex}{\out{\hypertarget{method-GerminalCenter-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-GerminalCenter-format"></a>}}
+\if{latex}{\out{\hypertarget{method-GerminalCenter-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{GerminalCenter$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{GerminalCenter$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -130,6 +135,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

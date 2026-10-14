@@ -3,6 +3,10 @@
 \name{IdiotypicNetwork}
 \alias{IdiotypicNetwork}
 \title{IdiotypicNetwork}
+\value{
+An \code{\link[R6]{R6Class}} generator.
+  \code{IdiotypicNetwork$new()} returns an \code{IdiotypicNetwork} object.
+}
 \description{
 Implements Jerne's idiotypic network theory for antibody
 repertoire regulation. Replaces crude epsilon-threshold suppression with
@@ -65,7 +69,7 @@ rep$size()
 \item \href{#method-IdiotypicNetwork-regulate}{\code{IdiotypicNetwork$regulate()}}
 \item \href{#method-IdiotypicNetwork-get_network}{\code{IdiotypicNetwork$get_network()}}
 \item \href{#method-IdiotypicNetwork-get_population}{\code{IdiotypicNetwork$get_population()}}
-\item \href{#method-IdiotypicNetwork-print}{\code{IdiotypicNetwork$print()}}
+\item \href{#method-IdiotypicNetwork-format}{\code{IdiotypicNetwork$format()}}
 \item \href{#method-IdiotypicNetwork-clone}{\code{IdiotypicNetwork$clone()}}
 }
 }
@@ -162,12 +166,13 @@ Numeric vector or NULL if not yet run.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-IdiotypicNetwork-print"></a>}}
-\if{latex}{\out{\hypertarget{method-IdiotypicNetwork-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-IdiotypicNetwork-format"></a>}}
+\if{latex}{\out{\hypertarget{method-IdiotypicNetwork-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{IdiotypicNetwork$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{IdiotypicNetwork$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -176,6 +181,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

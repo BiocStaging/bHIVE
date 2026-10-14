@@ -26,6 +26,9 @@
 #'   considered the same across repertoires.
 #' @param min_appearances Integer. Minimum repertoires for an antibody to be public.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator.
+#'   \code{ConvergentSelector$new()} returns a \code{ConvergentSelector} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 ConvergentSelector <- R6::R6Class(
@@ -110,16 +113,19 @@ ConvergentSelector <- R6::R6Class(
       self$find_public(results, distFunc)
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat("<ConvergentSelector>\n")
-      cat(sprintf("  Tolerance: %.3f\n", self$tolerance))
-      cat(sprintf("  Min appearances: %d\n", self$min_appearances))
+    #' @return A character vector.
+    format = function(...) {
+      out <- c("<ConvergentSelector>",
+               sprintf("  Tolerance: %.3f", self$tolerance),
+               sprintf("  Min appearances: %d", self$min_appearances))
       if (!is.null(self$public_antibodies)) {
-        cat(sprintf("  Public antibodies: %d\n", nrow(self$public_antibodies)))
+        out <- c(out, sprintf("  Public antibodies: %d",
+                              nrow(self$public_antibodies)))
       }
-      invisible(self)
+      out
     }
   )
 )
