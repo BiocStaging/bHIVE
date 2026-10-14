@@ -1,192 +1,112 @@
-#' Mulilayered honeycombHIVE for caret
+#' Multilayered honeycombHIVE classification model for caret
 #'
-#' A \code{caret} wrapper for the \code{\link{honeycombHIVE}} function,
-#' enabling seamless integration with the \code{caret} package for
-#' hyperparameter tuning, cross-validation, and performance evaluation.
+#' A custom model definition that lets \code{caret::train()} tune, resample
+#' and evaluate \code{\link{honeycombHIVE}} classifiers with gradient-based
+#' refinement.
 #'
 #' @name honeycombHIVEmodel
+#' @format A list with the components \pkg{caret} expects of a custom model.
+#'
+#' @details
+#' Training runs \code{honeycombHIVE(refine = TRUE)} with the tuned
+#' parameters. Further arguments given to \code{caret::train()} are passed on
+#' to \code{honeycombHIVE()}. Progress output is off unless
+#' \code{verbose = TRUE} is passed. Prediction uses the fitted
+#' \code{\link{AINet}} model of the final layer. caret requires column names
+#' on \code{x}. Class probabilities are not implemented (\code{prob = NULL}).
+#'
 #' @section Parameters:
 #'   \itemize{
-#'     \item \code{nAntibodies}: Number of initial antibodies in the network.
+#'     \item \code{nAntibodies}: Number of initial antibodies per layer.
 #'     \item \code{beta}: Clone multiplier controlling the number of clones per
 #'           antibody.
 #'     \item \code{epsilon}: Threshold for network suppression to remove
 #'           redundant antibodies.
-#'     \item \code{layers}: Number of hierarchical layers for iterative
-#'           refinement.
+#'     \item \code{layers}: Number of hierarchical layers.
 #'     \item \code{refineOptimizer}: Optimizer for gradient-based refinement
-#'           (e.g. "sgd", "momentum", "adagrad", "adam", "rmsprop").
+#'           ("sgd", "momentum", "adagrad", "adam" or "rmsprop").
 #'     \item \code{refineSteps}: Number of gradient update steps in refinement.
 #'     \item \code{refineLR}: Learning rate for refinement.
 #'   }
 #'
-#' @section Supported Tasks:
-#'   \itemize{
-#'     \item \code{"Classification"}: Assigns class labels to input observations.
-#'     \item \code{"Clustering"}: Groups data points based on similarity
-#'           (though typically \code{caret} is used for supervised tasks).
-#'   }
-#'
-#' @return A \code{caret} model definition list. Pass it to
-#'   \code{\link[caret]{train}} for model training and evaluation.
+#' @return A list defining a custom \pkg{caret} model, for use as
+#'   \code{caret::train(method = honeycombHIVEmodel)}.
 #'
 #' @examples
-#' \dontrun{
-#'   library(caret)
-#'   # Example: Classification with Iris
-#'   data(iris)
-#'   X <- as.matrix(iris[, 1:4])
-#'   y <- iris$Species
-#'
-#'   train_control <- trainControl(method = "cv", number = 5)
-#'   set.seed(42)
-#'   model <- train(
-#'     x = X,
-#'     y = y,
-#'     method = honeycombHIVEmodel,
-#'     trControl = train_control,
-#'     tuneGrid = expand.grid(
-#'       nAntibodies = c(10, 20),
-#'       beta = c(3, 5),
-#'       epsilon = c(0.01, 0.05),
-#'       layers = c(1, 2),
-#'       refineOptimizer = "adam",
-#'       refineSteps = 5,
-#'       refineLR = 0.01
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'     X <- as.matrix(iris[, 1:4])
+#'     y <- iris$Species
+#'     set.seed(42)
+#'     fit <- caret::train(
+#'         x = X, y = y, method = honeycombHIVEmodel,
+#'         trControl = caret::trainControl(method = "cv", number = 3),
+#'         tuneGrid = data.frame(nAntibodies = 30, beta = 5, epsilon = 0.05,
+#'                               layers = 2, refineOptimizer = "adam",
+#'                               refineSteps = 3, refineLR = 0.01),
+#'         maxIter = 10
 #'     )
-#'   )
-#'   print(model)
+#'     fit
+#'     table(Predicted = predict(fit, X), Actual = y)
 #' }
 #'
-#' @seealso \code{\link[caret]{train}}, \code{\link[caret]{trainControl}}
+#' @seealso \code{\link{honeycombHIVE}}, \code{\link{bHIVEmodel}},
+#'   \code{\link[caret]{train}}
 #' @export
 honeycombHIVEmodel <- list(
   label = "Multilayered Artificial Immune Network (honeycombHIVE)",
-  library = c("bHIVE"),
-  type = c("Classification", "Clustering"),
-
-  # Tuning parameters, including new refinement settings
+  library = "bHIVE",
+  type = "Classification",
   parameters = data.frame(
     parameter = c("nAntibodies", "beta", "epsilon", "layers",
                   "refineOptimizer", "refineSteps", "refineLR"),
-    class = c("numeric", "numeric", "numeric", "integer",
+    class = c("numeric", "numeric", "numeric", "numeric",
               "character", "numeric", "numeric"),
-    label = c(
-      "Number of Antibodies",
-      "Clone Multiplier (beta)",
-      "Epsilon Threshold",
-      "Number of Layers",
-      "Refinement Optimizer",
-      "Refinement Steps",
-      "Refinement Learning Rate"
-    )
+    label = c("Number of Antibodies", "Clone Multiplier (beta)",
+              "Epsilon Threshold", "Number of Layers", "Refinement Optimizer",
+              "Refinement Steps", "Refinement Learning Rate")
   ),
-
-  # Default tuning grid: additional refinement parameters are set to fixed defaults
-  grid = function(x, y, len = NULL) {
-    expand.grid(
-      nAntibodies = seq(10, 50, length.out = len),
-      beta = seq(1, 10, length.out = len),
-      epsilon = seq(0.01, 0.1, length.out = len),
-      layers = seq(1, 3, length.out = len),
-      refineOptimizer = "adam",
-      refineSteps = 5,
-      refineLR = 0.01
-    )
-  },
-
-  # The core "fit" function: trains honeycombHIVE on the given data
-  fit = function(x, y, wts, param, lev, last, classProbs, ...) {
-    task <- if (is.factor(y)) "classification" else "clustering"
-
-    # Train the honeycombHIVE model with refinement parameters passed in from the tuning grid
-    results <- honeycombHIVE(
-      X = x,
-      y = y,
-      task = task,
-      nAntibodies = param$nAntibodies,
-      beta = param$beta,
-      epsilon = param$epsilon,
-      layers = param$layers,
-      refine = TRUE,
-      refineLoss = "categorical_crossentropy",
-      refineSteps = param$refineSteps,
-      refineLR = param$refineLR,
-      refinePushAway = (task == "classification"),
-      refineOptimizer = param$refineOptimizer,
-      # Fixed defaults for additional hyperparameters (could be tuned in an extended grid)
-      refineMomentumCoef = 0.9,
-      refineBeta1 = 0.9,
-      refineBeta2 = 0.999,
-      refineRmspropDecay = 0.9,
-      refineEpsilon = 1e-8,
-      ...
-    )
-
-    # The model object returned to caret ("modelFit") contains:
-    # 1) The entire results list from honeycombHIVE
-    # 2) The final layer's output (for prediction purposes)
-    final_layer <- results[[length(results)]]
-
-    modelFit <- list(
-      task = task,
-      results = results,      # all layers
-      finalLayer = final_layer,  # convenience
-      obsLevels = if (task == "classification") lev else NULL
-    )
-
-    if (task == "classification") {
-      modelFit$levels <- lev
+  # Refinement settings are fixed in the default grid. Tune them with
+  # tuneGrid.
+  grid = function(x, y, len = NULL, search = "grid") {
+    if (search == "grid") {
+      g <- expand.grid(nAntibodies = round(seq(10, 50, length.out = len)),
+                       beta        = seq(1, 10, length.out = len),
+                       epsilon     = seq(0.01, 0.1, length.out = len),
+                       layers      = unique(round(seq(1, 3, length.out = len))))
     } else {
-      modelFit$levels <- NULL
+      g <- data.frame(nAntibodies = sample(10:50, len, replace = TRUE),
+                      beta        = runif(len, 1, 10),
+                      epsilon     = runif(len, 0.01, 0.1),
+                      layers      = sample(1:3, len, replace = TRUE))
     }
-
-    class(modelFit) <- "honeycombHIVEmodel"
-    return(modelFit)
+    g$refineOptimizer <- "adam"
+    g$refineSteps <- 5
+    g$refineLR <- 0.01
+    g
   },
-
-  # Prediction function for new data
+  fit = function(x, y, wts, param, lev, last, classProbs, ...) {
+    if (!is.factor(y)) {
+      stop("honeycombHIVEmodel supports classification only: y must be a factor.",
+           call. = FALSE)
+    }
+    args <- c(list(X = as.matrix(x), y = y, task = "classification",
+                   nAntibodies = param$nAntibodies, beta = param$beta,
+                   epsilon = param$epsilon,
+                   layers = as.integer(round(param$layers)), refine = TRUE,
+                   refineSteps = param$refineSteps, refineLR = param$refineLR,
+                   # tuning grids store strings as factors
+                   refineOptimizer = as.character(param$refineOptimizer)),
+              list(...))
+    if (is.null(args$verbose)) args$verbose <- FALSE
+    results <- do.call(honeycombHIVE, args)
+    structure(list(task = "classification", results = results,
+                   finalLayer = results[[length(results)]],
+                   obsLevels = if (is.null(lev)) levels(y) else lev),
+              class = "honeycombHIVEmodel")
+  },
   predict = function(modelFit, newdata, submodels = NULL) {
-    task <- modelFit$task
-    finalLayer <- modelFit$finalLayer
-
-    # For clustering, prediction is not defined in this wrapper.
-    if (task == "clustering") {
-      stop("Prediction not defined for clustering in this caret wrapper.")
-    }
-
-    # 1) Get final antibodies from the final layer
-    finalAb <- finalLayer$antibodies
-    if (is.null(finalAb)) {
-      stop("No antibodies found in final layer. Check your honeycombHIVE output.")
-    }
-
-    # 2) Get the predicted label for each antibody from the final layer's predictions
-    antibodyLabels <- finalLayer$predictions
-    if (is.null(antibodyLabels)) {
-      stop("No final antibody labels found. Check how your honeycombHIVE stores them.")
-    }
-
-    # 3) Compute distances from newdata to finalAb (using Euclidean squared distance)
-    newdata <- as.matrix(newdata)
-    finalAb <- as.matrix(finalAb)
-    preds <- vector("list", nrow(newdata))
-    for (i in seq_len(nrow(newdata))) {
-      diffs <- sweep(finalAb, 2, newdata[i, ], FUN = "-")
-      dists <- rowSums(diffs^2)
-      idx_min <- which.min(dists)
-      preds[[i]] <- idx_min
-    }
-    nearest_idx <- unlist(preds)
-
-    # 4) Return the corresponding label for each observation
-    out <- antibodyLabels[nearest_idx]
-    out <- factor(out, levels = modelFit$levels)
-    return(out)
+    factor(modelFit$finalLayer$model$predict(as.matrix(newdata)),
+           levels = modelFit$obsLevels)
   },
-
-  # Probability predictions for classification are not supported in this wrapper.
-  prob = function(modelFit, newdata, submodels = NULL) {
-    stop("Probability predictions are not supported for honeycombHIVE in this wrapper.")
-  }
+  prob = NULL
 )

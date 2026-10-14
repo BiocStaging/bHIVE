@@ -1,162 +1,106 @@
-#' B-cell-based Hybrid Immune Virtual Evolution (bHIVE) for caret
+#' bHIVE classification model for caret
 #'
-#' A wrapper for integrating the B-cell Hybrid Immune Variant Engine
-#' (bHIVE) algorithm with the \code{caret} package. Supports classification
-#' tasks, providing compatibility with \code{caret::train()}
-#' for model training and validation.
+#' A custom model definition that lets \code{caret::train()} tune, resample
+#' and evaluate \code{\link{bHIVE}} classifiers.
 #'
 #' @name bHIVEmodel
-#' @format A list containing the components required for integration with
-#' the \code{caret} package.
+#' @format A list with the components \pkg{caret} expects of a custom model.
 #'
 #' @details
-#' The \code{bHIVEmodel} wrapper facilitates the use of bHIVE for classification.
-#' It defines the model label, parameter grid, fitting function,
-#' and prediction methods to conform to the \code{caret} model specification.
+#' Pass \code{bHIVEmodel} as the \code{method} of \code{caret::train()}.
+#' Training fits \code{\link{bHIVE}} with the tuned \code{nAntibodies},
+#' \code{beta} and \code{epsilon}. Further arguments given to
+#' \code{caret::train()} (for example \code{maxIter}, \code{scale} or
+#' immunology modules) are passed on to \code{bHIVE()}. Progress output is
+#' off unless \code{verbose = TRUE} is passed. Prediction labels each new
+#' observation with the class of its best-matching antibody, using the fitted
+#' \code{\link{AINet}} model, so new data gets the same scaling and kernel as
+#' the training data.
+#'
+#' caret requires column names on \code{x}.
 #'
 #' @section Components:
 #' \describe{
-#'   \item{\code{label}}{Character string. Identifies the model as
-#'   "B-cell-based Hybrid Immune Virtual Evolution".}
-#'   \item{\code{library}}{Character string. Specifies the R package containing
-#'   the bHIVE implementation. Default is "customPackage".}
-#'   \item{\code{type}}{Character vector. Specifies the supported tasks:
-#'   "Classification".}
-#'   \item{\code{parameters}}{A \code{data.frame} describing the tunable 
-#'   parameters: 
-#'   \itemize{
-#'     \item \code{parameter}: Name of the parameter.
-#'     \item \code{class}: Data type of the parameter ("numeric").
-#'     \item \code{label}: Short description of the parameter.
-#'   }}
-#'   \item{\code{grid}}{Function. Generates a grid of tuning parameters for 
-#'   hyperparameter optimization.}
-#'   \item{\code{fit}}{Function. Trains the bHIVE model using specified
-#'   hyperparameters and task type.}
-#'   \item{\code{predict}}{Function. Generates predictions for new data
-#'   (classification labels).}
-#'   \item{\code{prob}}{Function. Calculates class probabilities for 
-#'   classification tasks.}
+#'   \item{\code{label}}{"Artificial Immune Network (bHIVE)".}
+#'   \item{\code{library}}{"bHIVE".}
+#'   \item{\code{type}}{"Classification".}
+#'   \item{\code{parameters}}{The tunable parameters: \code{nAntibodies}
+#'   (initial antibody count), \code{beta} (clone multiplier) and
+#'   \code{epsilon} (suppression threshold).}
+#'   \item{\code{grid}}{\code{function(x, y, len, search)}. A default tuning
+#'   grid, regular (\code{search = "grid"}) or random.}
+#'   \item{\code{fit}}{\code{function(x, y, wts, param, lev, last, classProbs,
+#'   ...)}. Fits \code{bHIVE()} and returns its result.}
+#'   \item{\code{predict}}{\code{function(modelFit, newdata, submodels)}.
+#'   Returns a factor of predicted classes.}
+#'   \item{\code{prob}}{\code{NULL}. Class probabilities are not implemented,
+#'   so \code{caret::train()} warns and continues if \code{classProbs = TRUE}.}
 #' }
 #'
-#' @section Parameters:
-#' \describe{
-#'   \item{\code{nAntibodies}}{Number of initial antibodies in the 
-#'   bHIVE algorithm.}
-#'   \item{\code{beta}}{Clone multiplier. Controls the number of clones 
-#'   generated for top-matching antibodies.}
-#'   \item{\code{epsilon}}{Similarity threshold for antibody suppression. 
-#'   Smaller values encourage more diversity in the repertoire.}
-#' }
-#'
-#' @section Functions:
-#' \itemize{
-#'   \item \code{grid(x, y, len)}: Generates a grid of tuning parameters.
-#'   Accepts:
-#'     \itemize{
-#'       \item \code{x}: Feature matrix or data frame.
-#'       \item \code{y}: Factor target vector for classification.
-#'       \item \code{len}: Number of grid points for each parameter.
-#'     }
-#'   \item \code{fit(x, y, wts, param, lev, last, classProbs, ...)}: Trains 
-#'   the bHIVE model. Key arguments:
-#'     \itemize{
-#'       \item \code{x}: Feature matrix or data frame.
-#'       \item \code{y}: Target vector.
-#'       \item \code{param}: List of hyperparameters (\code{nAntibodies}, 
-#'       \code{beta}, \code{epsilon}).
-#'       \item \code{...}: Additional arguments passed to the bHIVE function.
-#'     }
-#'   \item \code{predict(modelFit, newdata, submodels)}: Generates predictions 
-#'   for new data.
-#'     \itemize{
-#'       \item \code{modelFit}: Trained bHIVE model.
-#'       \item \code{newdata}: New feature data for prediction.
-#'     }
-#'   \item \code{prob(modelFit, newdata, submodels)}: Calculates class 
-#'   probabilities (classification only).
-#' }
-#'
-#' @section Example Usage:
-#' \preformatted{
-#' library(caret)
-#' 
-#' # Simulated classification dataset
-#' set.seed(123)
-#' X <- matrix(rnorm(100 * 5), ncol = 5)
-#' y <- factor(sample(c("Class1", "Class2"), 100, replace = TRUE))
-#' 
-#' # Train bHIVE model using caret
-#' trainControl <- trainControl(method = "cv", number = 5, classProbs = TRUE)
-#' tunedModel <- train(
-#'   x = X,
-#'   y = y,
-#'   method = bHIVEmodel,
-#'   trControl = trainControl,
-#'   tuneLength = 3
-#' )
-#' 
-#' # Predictions
-#' predictions <- predict(tunedModel, newdata = X)
-#' probabilities <- predict(tunedModel, newdata = X, type = "prob")
-#' }
+#' @return A list defining a custom \pkg{caret} model, for use as
+#'   \code{caret::train(method = bHIVEmodel)}.
 #'
 #' @examples
-#' # View model structure
 #' bHIVEmodel$label
 #' bHIVEmodel$parameters
 #'
-#' @seealso \code{\link[caret]{train}}, \code{\link[caret]{trainControl}}
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'     X <- as.matrix(iris[, 1:4])
+#'     y <- iris$Species
+#'     set.seed(42)
+#'     fit <- caret::train(
+#'         x = X, y = y, method = bHIVEmodel,
+#'         trControl = caret::trainControl(method = "cv", number = 3),
+#'         tuneGrid = data.frame(nAntibodies = 40, beta = 5, epsilon = 0.05),
+#'         maxIter = 10
+#'     )
+#'     fit
+#'     table(Predicted = predict(fit, X), Actual = y)
+#' }
 #'
+#' @seealso \code{\link{bHIVE}}, \code{\link{honeycombHIVEmodel}},
+#'   \code{\link[caret]{train}}
+#'
+#' @importFrom stats runif
 #' @export
 bHIVEmodel <- list(
   label = "Artificial Immune Network (bHIVE)",
   library = "bHIVE",
-  type = c("Classification", "Clustering"),
+  type = "Classification",
   parameters = data.frame(
     parameter = c("nAntibodies", "beta", "epsilon"),
     class = c("numeric", "numeric", "numeric"),
     label = c("Number of Antibodies", "Clone Multiplier", "Epsilon Threshold")
   ),
-  grid = function(x, y, len = NULL) {
-    expand.grid(
-      nAntibodies = seq(10, 50, length.out = len),
-      beta = seq(1, 10, length.out = len),
-      epsilon = seq(0.01, 0.1, length.out = len)
-    )
+  grid = function(x, y, len = NULL, search = "grid") {
+    if (search == "grid") {
+      expand.grid(nAntibodies = round(seq(10, 50, length.out = len)),
+                  beta        = seq(1, 10, length.out = len),
+                  epsilon     = seq(0.01, 0.1, length.out = len))
+    } else {
+      data.frame(nAntibodies = sample(10:50, len, replace = TRUE),
+                 beta        = runif(len, 1, 10),
+                 epsilon     = runif(len, 0.01, 0.1))
+    }
   },
   fit = function(x, y, wts, param, lev, last, classProbs, ...) {
-    bHIVE(
-      X = x,
-      y = y,
-      task = if (is.factor(y)) "classification" else "clustering",
-      nAntibodies = param$nAntibodies,
-      beta = param$beta,
-      epsilon = param$epsilon,
-      ...
-    )
+    if (!is.factor(y)) {
+      stop("bHIVEmodel supports classification only: y must be a factor.",
+           call. = FALSE)
+    }
+    args <- c(list(X = as.matrix(x), y = y, task = "classification",
+                   nAntibodies = param$nAntibodies, beta = param$beta,
+                   epsilon = param$epsilon),
+              list(...))
+    if (is.null(args$verbose)) args$verbose <- FALSE
+    res <- do.call(.bHIVE_matrix, args)
+    # caret sets obsLevels itself; keep a copy for direct fit/predict calls.
+    res$obsLevels <- if (is.null(lev)) levels(y) else lev
+    res
   },
   predict = function(modelFit, newdata, submodels = NULL) {
-    # Extract the 'assignments' from the modelFit object
-    if ("assignments" %in% names(modelFit)) {
-      predictions <- apply(newdata, 1, function(row) {
-        distances <- apply(modelFit$antibodies, 1, function(a) {
-          sum((row - a)^2)  # Euclidean distance
-        })
-        closest <- which.min(distances)
-        if (modelFit$task == "classification") {
-          return(modelFit$assignments[closest])
-        } else {
-          return(closest)
-        }
-      })
-    } else {
-      stop("Invalid model object: missing 'assignments'")
-    }
-
-    return(predictions)
+    factor(modelFit$model$predict(as.matrix(newdata)),
+           levels = modelFit$obsLevels)
   },
-  prob = function(modelFit, newdata, submodels = NULL) {
-    stop("Probabilities are not supported for this model.")
-  }
+  prob = NULL
 )
