@@ -29,16 +29,15 @@ LinkingTo:
 Suggests:
     BiocStyle,
     caret,
-    devtools,
+    FlowSOM,
+    HDCytoData,
     knitr,
-    pkgdown,
     rmarkdown,
     Rtsne,
     scran,
     spelling,
     testthat (>= 3.0.0),
-    umap,
-    viridis
+    umap
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Language: en-US

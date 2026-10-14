@@ -1,5 +1,5 @@
 ---
-title: "Composing Immune Modules"
+title: "Composing immune modules with AINet"
 author:
   name: Nick Borcherding
   email: ncborch@gmail.com
@@ -8,22 +8,31 @@ date: "`r Sys.Date()`"
 output:
   BiocStyle::html_document:
     toc_float: true
+package: bHIVE
+vignette: >
+  %\VignetteIndexEntry{Composing immune modules with AINet}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
 ---
 
-```{r, echo=FALSE, results="hide", message=FALSE}
-knitr::opts_chunk$set(error=FALSE, message=FALSE, warning=FALSE, tidy = FALSE)
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(message = FALSE, tidy = FALSE)
+library(BiocStyle)
+```
+
+```{r packages}
 library(bHIVE)
-library(ggplot2)
-library(viridis)
 ```
 
 # Introduction
 
-The bHIVE package provides two equivalent interfaces: a **functional API**
-(`bHIVE()`) for quick, one-liner analysis and an **R6 class API** (`AINet`)
-for full compositional control. This vignette focuses on the R6 API and
-the 9 immune modules that can be injected into `AINet` to customize every
-stage of the algorithm.
+The bHIVE package has two interfaces. The functional `bHIVE()` runs a whole
+analysis in one call, and the introductory vignette,
+`vignette("bHIVE", package = "bHIVE")`, uses it on mass cytometry data. The
+R6 class `AINet` exposes the same engine as a model object. This vignette
+covers `AINet` and the nine immune modules it accepts, each of which
+changes one stage of the algorithm. We use the small `iris` data so each
+example runs in a second.
 
 Each module is an independent R6 class that encapsulates a single
 immunological mechanism. You create modules separately and pass them to
@@ -62,6 +71,7 @@ data(iris)
 X <- as.matrix(iris[, 1:4])
 y <- iris$Species
 
+set.seed(3)
 methods <- c("uniform", "airs", "adaptive")
 results <- lapply(methods, function(m) {
   shm <- SHMEngine$new(method = m)
@@ -83,39 +93,48 @@ do.call(rbind, results)
 
 In classical AIS, similar antibodies are suppressed via a simple distance
 threshold (epsilon). The `IdiotypicNetwork` module replaces this with
-principled network dynamics inspired by Varela & Coutinho's (1991)
-second-generation immune network theory.
+network dynamics inspired by Varela and Coutinho's (1991) second-generation
+immune network theory.
 
-The key insight is a **bell-shaped activation function**: too little
-stimulation from other antibodies leads to death, moderate stimulation
-leads to activation, and excessive stimulation leads to suppression. This
-creates emergent self-organized repertoire structure.
+The key idea is a bell-shaped activation function. Too little stimulation
+from other antibodies leads to death, moderate stimulation to activation, and
+excessive stimulation to suppression.
 
-```{r idiotypic-demo}
-# Standard epsilon suppression (default)
-model_std <- AINet$new(nAntibodies = 25, maxIter = 15, verbose = FALSE)
-model_std$fit(X, task = "clustering")
+The module is experimental. It applies the activation to each pair of
+antibodies, so it works as intended on a small, tight repertoire. The example
+below builds one: four antibodies at pairwise affinity 0.25, in the middle of
+the default activation window, and one far from the rest.
 
-# Idiotypic network regulation
-model_idi <- AINet$new(
-  nAntibodies = 25, maxIter = 15,
-  idiotypic = IdiotypicNetwork$new(
-    theta_low = 0.01, 
-    theta_high = 0.5,
-    source_rate = 0.5, 
-    timeSteps = 20
-  ),
-  verbose = FALSE
-)
-model_idi$fit(X, task = "clustering")
-
-cat("Standard suppression:", model_std$repertoire$size(), "antibodies\n")
-cat("Idiotypic regulation:", model_idi$repertoire$size(), "antibodies\n")
+```{r idiotypic-small}
+a <- sqrt(log(4) / 2)
+A <- rbind(cbind(diag(4) * a, 0), c(0, 0, 0, 0, 10))
+rep <- ImmuneRepertoire$new(A)
+idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
+idi$regulate(rep, "gaussian", list(alpha = 1))
+idi
+round(as.vector(idi$get_population()), 2)
 ```
 
-The idiotypic network typically produces a more parsimonious repertoire
-because regulation is based on the *network* of antibody-antibody
-interactions rather than pairwise distance alone.
+The four antibodies that stimulate each other survive. The isolated one is
+under-stimulated and dies.
+
+On a full repertoire most pairs of antibodies are far apart. Their affinity
+is near zero, below `theta_low`, so each pair counts as suppression and the
+dynamics remove every antibody. `AINet` then keeps the top 10% by population
+and reports it:
+
+```{r idiotypic-full, message = TRUE}
+set.seed(1)
+model_idi <- AINet$new(nAntibodies = 25, maxIter = 15,
+                       idiotypic = IdiotypicNetwork$new(),
+                       verbose = FALSE)
+model_idi$fit(X, task = "clustering")
+model_idi$repertoire$size()
+```
+
+Check that antibodies survive on your data before relying on this module. A
+field-based form, in which the activation acts on the total stimulation each
+antibody receives, is planned.
 
 # Germinal Center Selection
 
@@ -130,11 +149,12 @@ The quality metric is task-aware:
 
 ```{r gc-demo}
 gc <- GerminalCenter$new(
-  nTfh = 10,                 # number of Tfh selectors
-  selectionPressure = 0.5,   # 0 = no selection, 1 = very strict
+  nTfh = 20,                 # number of Tfh selectors
+  selectionPressure = 0.2,   # 0 = no selection, 1 = very strict
   rounds = 1
 )
 
+set.seed(4)
 model_gc <- AINet$new(
   nAntibodies = 30, 
   maxIter = 15,
@@ -142,9 +162,13 @@ model_gc <- AINet$new(
   verbose = FALSE
 )
 model_gc$fit(X, y, task = "classification")
-cat("Antibodies after GC selection:", model_gc$repertoire$size(), "\n")
-cat("Accuracy:", mean(model_gc$result$assignments == as.character(y)), "\n")
+c(antibodies = model_gc$repertoire$size(),
+  accuracy = mean(model_gc$predict(X) == y))
 ```
+
+Selection pressure trades repertoire size for quality. Strong pressure trims
+the repertoire hard and, on a small dataset like iris, can cost accuracy.
+Tune it against a model without the module.
 
 # Microenvironment
 
@@ -218,7 +242,7 @@ A <- X[sample(150, 10), ]
 rep <- ImmuneRepertoire$new(A)
 aff <- rep$affinity_matrix(X, "gaussian")
 activated <- gate$evaluate(aff, X, A)
-cat("Activated interactions:", sum(activated), "/", length(activated), "\n")
+c(activated = sum(activated), total = length(activated))
 ```
 
 # Memory Pool
@@ -235,13 +259,12 @@ mp <- MemoryPool$new(
 )
 
 rep <- ImmuneRepertoire$new(X[sample(150, 10), ])
-n_archived <- mp$archive(rep, X)
-cat("Archived:", n_archived, "memory cells\n")
-cat("Pool size:", mp$size(), "\n")
+mp$archive(rep, X)
+mp
 
 # Recall memories relevant to a subset
 recalled <- mp$recall(X[1:30, ])
-cat("Recalled:", nrow(recalled), "cells for the query\n")
+nrow(recalled)
 ```
 
 # Class Switcher
@@ -283,7 +306,7 @@ results <- lapply(1:3, function(i) {
 
 conv <- ConvergentSelector$new(tolerance = 1.0, min_appearances = 2)
 public <- conv$from_results(results)
-cat("Public antibodies:", nrow(public), "\n")
+nrow(public)
 ```
 
 # Putting It All Together
@@ -291,29 +314,31 @@ cat("Public antibodies:", nrow(public), "\n")
 Here is a full example combining multiple modules for a classification task:
 
 ```{r full-example}
+set.seed(2)
 model <- AINet$new(
   nAntibodies = 25,
   maxIter = 20,
   k = 3,
   beta = 5,
   shm = SHMEngine$new(method = "adaptive", base_rate = 0.1),
-  idiotypic = IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5),
   germinalCenter = GerminalCenter$new(nTfh = 8, selectionPressure = 0.4),
+  microenvironment = Microenvironment$new(),
+  classSwitcher = ClassSwitcher$new(),
   verbose = FALSE
 )
 
 model$fit(X, y, task = "classification")
-
-cat("Final antibodies:", model$repertoire$size(), "\n")
-cat("Accuracy:", mean(model$result$assignments == as.character(y)), "\n")
+model
+mean(model$predict(X) == y)
 ```
 
-Not every module combination will improve every dataset. The modular design
-lets you experiment with different biological mechanisms and find the
-combination that works best for your data and task.
+Not every module combination improves every dataset. Compare a combination
+against the plain `AINet` before keeping it, on held-out data or with
+cross-validation. `caret::train(method = bHIVEmodel)` passes extra arguments,
+modules included, on to `bHIVE()`.
 
 # Session Information
 
-```{r}
+```{r session}
 sessionInfo()
 ```

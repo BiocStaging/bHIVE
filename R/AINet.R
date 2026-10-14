@@ -151,6 +151,7 @@ AINet <- R6::R6Class(
       for (iter in seq_len(ctx$cfg$maxIter)) {
         if (private$.fit_iteration(ctx, iter)) break
       }
+      private$.report_idiotypic_fallbacks(ctx)
       private$.fit_prune_orphans(ctx)
       private$.fit_coverage_boost(ctx)
       private$.fit_final_assignment(ctx)
@@ -532,11 +533,13 @@ AINet <- R6::R6Class(
       surv_idx <- which(as.logical(idi_out$keep))
       # Safety net: if the dynamics would kill every antibody (ill-tuned
       # thresholds for this data scale), keep the top-population 10% so the
-      # run continues and a downstream sweep can still score it low.
+      # run continues and a downstream sweep can still score it low. Counted
+      # so fit() can report it once rather than acting silently.
       if (length(surv_idx) == 0L) {
         pop    <- as.numeric(idi_out$population)
         keep_n <- max(1L, floor(0.1 * length(pop)))
         surv_idx <- order(pop, decreasing = TRUE)[seq_len(keep_n)]
+        ctx$idi_fallbacks <- (ctx$idi_fallbacks %||% 0L) + 1L
       }
       self$repertoire$subset(surv_idx)
       private$.subset_aux(ctx, surv_idx)
@@ -591,6 +594,22 @@ AINet <- R6::R6Class(
                         iter, m_new, ctx$noImproveCount))
       }
       FALSE
+    },
+
+    # The idiotypic rule applies the bell activation to each antibody pair,
+    # so in a large or spread-out repertoire every distant antibody counts
+    # as a suppressor and the dynamics remove everything. Say so once per
+    # fit (see ?IdiotypicNetwork) instead of falling back silently.
+    .report_idiotypic_fallbacks = function(ctx) {
+      n_fb <- ctx$idi_fallbacks %||% 0L
+      if (n_fb > 0L) {
+        message(sprintf(paste0(
+          "IdiotypicNetwork removed every antibody in %d of %d iterations; ",
+          "the top 10%% by population were kept each time. See ",
+          "?IdiotypicNetwork for when the module applies."),
+          n_fb, length(self$history)))
+      }
+      invisible(NULL)
     },
 
     # --- 4a. Orphan-antibody pruning ----------------------------------------

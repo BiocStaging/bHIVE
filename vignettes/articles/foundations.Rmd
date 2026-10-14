@@ -11,11 +11,10 @@ output:
 ---
 
 ```{r, echo=FALSE, results="hide", message=FALSE}
-knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, tidy=FALSE,
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, tidy=FALSE,
                       fig.width=7, fig.height=5)
 library(bHIVE)
 library(ggplot2)
-library(viridis)
 ```
 
 # Overview

@@ -19,6 +19,20 @@
 #' No existing AIS implementation uses idiotypic network dynamics for
 #' repertoire regulation.
 #'
+#' @section Experimental:
+#' The activation rule is applied to each antibody pair and the responses are
+#' summed: every neighbor whose affinity falls outside
+#' \code{[theta_low, theta_high]} counts as one unit of suppression. In a
+#' small, tight repertoire this culls crowded and isolated antibodies as
+#' intended (see the example). In a large or spread-out repertoire most pairs
+#' are far apart, their affinity is near zero, and every antibody is
+#' suppressed. \code{regulate()} then warns and leaves the repertoire
+#' unchanged, and \code{\link{AINet}} keeps the top 10\% by population and
+#' reports it with a message. Treat the module as experimental and check that
+#' antibodies survive on your data. A field-based form, in which the
+#' activation acts on the total stimulation each antibody receives, is
+#' planned.
+#'
 #' @examples
 #' # Four antibodies with pairwise affinity 0.25 (inside the default
 #' # activation window) stimulate each other and survive. A fifth, far from

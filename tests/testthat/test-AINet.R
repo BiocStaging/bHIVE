@@ -769,3 +769,20 @@ test_that("minPerClass is validated and an empty initialization is rejected", {
   m <- AINet$new(init = empty_init, verbose = FALSE)
   expect_error(m$fit(X), "non-empty matrix")
 })
+
+test_that("AINet reports when idiotypic regulation falls back", {
+  # On a spread-out repertoire the per-pair rule suppresses every antibody.
+  set.seed(50)
+  m <- AINet$new(nAntibodies = 25, maxIter = 3, verbose = FALSE,
+                 idiotypic = IdiotypicNetwork$new())
+  msgs <- capture_messages(m$fit(X))
+  expect_true(any(grepl("IdiotypicNetwork removed every antibody", msgs)))
+  # A permissive window keeps antibodies and stays quiet.
+  set.seed(50)
+  m <- AINet$new(nAntibodies = 25, maxIter = 3, verbose = FALSE,
+                 idiotypic = IdiotypicNetwork$new(theta_low = 1e-4,
+                                                  theta_high = 0.999,
+                                                  survival_threshold = 0.01))
+  expect_false(any(grepl("IdiotypicNetwork",
+                         capture_messages(m$fit(X)))))
+})
