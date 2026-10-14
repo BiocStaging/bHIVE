@@ -542,7 +542,7 @@ test_that("predict() uses the ClassSwitcher-modulated bandwidth", {
   expect_identical(model$predict(X), model$result$assignments)
 })
 
-test_that("classification result records the labelling antibody", {
+test_that("classification result records the labeling antibody", {
   set.seed(15)
   model <- AINet$new(nAntibodies = 20, maxIter = 5, verbose = FALSE)
   model$fit(X, y_class)

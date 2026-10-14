@@ -125,11 +125,11 @@ A list of length \code{layers}. Each element (layer) is the
     \item \code{predictions}: For classification, the predicted label for
     each original row: the majority label of its cluster.
     \item \code{model}: Final layer only. The fitted \code{\link{AINet}}
-    model, for labelling new observations with \code{$predict()}.
+    model, for labeling new observations with \code{$predict()}.
     \item \code{task}: The specified task.
   }
   For classification, each layer collapses observations by the antibody
-  that labelled them, so a layer keeps several prototypes per class.
+  that labeled them, so a layer keeps several prototypes per class.
 }
 \description{
 The \code{honeycombHIVE} function implements a multilayer artificial immune

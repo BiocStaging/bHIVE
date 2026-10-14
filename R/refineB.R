@@ -71,7 +71,7 @@
 #' y <- iris$Species
 #' res <- bHIVE(X, y, task = "classification", nAntibodies = 10,
 #'              maxIter = 5, verbose = FALSE)
-#' # antibody_index gives the antibody (row of res$antibodies) that labelled
+#' # antibody_index gives the antibody (row of res$antibodies) that labeled
 #' # each sample
 #' A_refined <- refineB(res$antibodies, X, y = y,
 #'                      assignments = res$antibody_index,
@@ -182,34 +182,36 @@ refineB <- function(A, X, y = NULL, assignments,
 #' Build a per-antibody update function for the chosen optimizer
 #'
 #' Returns step(j, grad), which updates the optimizer state for antibody j and
-#' returns the displacement to add to A[j, ]. State lives in the closure.
+#' returns the displacement to add to A[j, ]. State lives in an environment
+#' shared by the returned function.
 #' @keywords internal
 #' @noRd
 .refineB_optimizer <- function(optimizer, nAb, d, lr, momentum_coef, beta1,
                                beta2, rmsprop_decay, epsilon) {
-  s1 <- matrix(0, nrow = nAb, ncol = d)  # velocity / accumulator / 1st moment
-  s2 <- matrix(0, nrow = nAb, ncol = d)  # 2nd moment (Adam)
-  t_count <- rep(0, nAb)
+  st <- new.env(parent = emptyenv())
+  st$s1 <- matrix(0, nrow = nAb, ncol = d)  # velocity / accumulator / 1st moment
+  st$s2 <- matrix(0, nrow = nAb, ncol = d)  # 2nd moment (Adam)
+  st$t  <- rep(0, nAb)
   switch(optimizer,
     sgd = function(j, g) lr * g,
     momentum = function(j, g) {
-      s1[j, ] <<- momentum_coef * s1[j, ] + g
-      lr * s1[j, ]
+      st$s1[j, ] <- momentum_coef * st$s1[j, ] + g
+      lr * st$s1[j, ]
     },
     adagrad = function(j, g) {
-      s1[j, ] <<- s1[j, ] + g^2
-      lr * g / (sqrt(s1[j, ]) + epsilon)
+      st$s1[j, ] <- st$s1[j, ] + g^2
+      lr * g / (sqrt(st$s1[j, ]) + epsilon)
     },
     adam = function(j, g) {
-      s1[j, ] <<- beta1 * s1[j, ] + (1 - beta1) * g
-      s2[j, ] <<- beta2 * s2[j, ] + (1 - beta2) * (g^2)
-      t_count[j] <<- t_count[j] + 1
-      m_hat <- s1[j, ] / (1 - beta1^(t_count[j]))
-      v_hat <- s2[j, ] / (1 - beta2^(t_count[j]))
+      st$s1[j, ] <- beta1 * st$s1[j, ] + (1 - beta1) * g
+      st$s2[j, ] <- beta2 * st$s2[j, ] + (1 - beta2) * (g^2)
+      st$t[j] <- st$t[j] + 1
+      m_hat <- st$s1[j, ] / (1 - beta1^(st$t[j]))
+      v_hat <- st$s2[j, ] / (1 - beta2^(st$t[j]))
       lr * m_hat / (sqrt(v_hat) + epsilon)
     },
     rmsprop = function(j, g) {
-      s1[j, ] <<- rmsprop_decay * s1[j, ] + (1 - rmsprop_decay) * (g^2)
-      lr * g / (sqrt(s1[j, ]) + epsilon)
+      st$s1[j, ] <- rmsprop_decay * st$s1[j, ] + (1 - rmsprop_decay) * (g^2)
+      lr * g / (sqrt(st$s1[j, ]) + epsilon)
     })
 }

@@ -1,3 +1,84 @@
+# bHIVE 0.99.7
+
+Changes in response to the first round of Bioconductor review.
+
+## Bioconductor integration
+* `bHIVE()` is now an S4 generic. New methods accept a
+  `SummarizedExperiment` (cells from `assay.type`) or a `SingleCellExperiment`
+  (cells from an assay or a `reducedDim()` via `use.dimred`). They return the
+  object with the labels in `colData()[[name]]` and the full result, including
+  the fitted model, in `metadata()[[name]]`. For classification, `y` can name
+  a `colData()` column.
+* New `bHIVEParam()`, a `BlusterParam` subclass. bHIVE now runs through
+  `bluster::clusterRows()`, `bluster::clusterSweep()` and
+  `scran::clusterCells()`.
+
+## Bug fixes
+* The caret wrappers `bHIVEmodel` and `honeycombHIVEmodel` predicted every
+  observation as the first class. They now predict with the fitted model.
+  `honeycombHIVEmodel` also failed in every caret fold because tuning grids
+  store `refineOptimizer` as a factor. Both wrappers now support `tuneLength`
+  and random search, set `prob = NULL`, and declare classification only.
+* `visualizeHIVE()` embedded the data and the prototypes separately, so the
+  prototypes were drawn in the wrong coordinates. The reduction is now fitted
+  to the data and the prototypes are projected into it (PCA and UMAP), or
+  embedded jointly with the data (tSNE). Several smaller plotting bugs are
+  fixed.
+* `predict()` failed after `affinityParams = list(alpha = "auto")`. It now
+  uses the bandwidth and metric the fit actually read out with, so it
+  reproduces the training labels, including after `ClassSwitcher` modulation
+  and Lloyd consolidation.
+* `targetK` could return fewer than K clusters when Lloyd refinement emptied
+  one. Empty clusters are now re-seeded, so `targetK` gives exactly K.
+* `honeycombHIVE()` classification collapsed every layer to one prototype per
+  class and predicted a single class from layer 2 on. Layers now collapse by
+  the antibody that labeled each row. Refinement now runs in the scaled
+  space and moves the antibody that labeled each sample.
+* `refineB()` re-indexed numeric assignments by first appearance, so samples
+  could pull the wrong antibody. Numeric assignments now index rows of `A`
+  directly.
+* `swarmbHIVE()` dropped the names of a one-column grid, rejected factor grid
+  columns, ignored a `maxIter` grid column, and crashed on non-integer grid
+  values when `verbose = TRUE`.
+* `compute_pairwise_distance()` left about 6e-8 on the diagonal. It is now
+  exactly 0.
+* `fit()` history is reset between fits. An empty initialization now gives a
+  clear error instead of a C++ error.
+
+## New behavior
+* Classification seeds antibodies per class. New argument `minPerClass`
+  (default 5) gives every class at least that many antibodies, so rare
+  populations can be predicted. Use `minPerClass = 0` for the previous
+  behavior.
+* Classification results gain `antibody_index`, the antibody that labeled
+  each observation.
+* Progress is reported with `message()` throughout, so `suppressMessages()`
+  silences it.
+* `AINet` reports when `IdiotypicNetwork` removes every antibody and the
+  safety net keeps the top 10%. The module is documented as experimental.
+
+## Code structure
+* `AINet$fit()` is split into private methods, one per stage or module.
+  `honeycombHIVE()`, `visualizeHIVE()`, `swarmbHIVE()` and `refineB()` are
+  split into internal helper functions. No function exceeds 50 lines.
+* R6 classes print through `format()` methods.
+
+## Documentation
+* The main vignette is rewritten around mass cytometry data from
+  HDCytoData, with a comparison against FlowSOM, k-means and graph-based
+  clustering, and label transfer against a nearest-centroid baseline.
+* The immune modules article is now a second vignette.
+* All R6 classes document their return value. The caret examples are
+  runnable.
+
+## Dependencies
+* Imports gain `bluster`, `methods`, `S4Vectors`, `SummarizedExperiment` and
+  `SingleCellExperiment`.
+* `umap` and `Rtsne` move to Suggests and are needed only for those
+  `visualizeHIVE()` reductions. `viridis` is no longer used.
+* Suggests gain `FlowSOM`, `HDCytoData` and `scran`, and drop `devtools` and
+  `pkgdown`.
+
 # bHIVE 0.99.6
 
 ## New Behavior

@@ -164,7 +164,7 @@
 #'     \item \code{antibody_classes}: Classification only. The class label of
 #'     each antibody.
 #'     \item \code{antibody_index}: Classification only. The row of
-#'     \code{antibodies} that labelled each observation.
+#'     \code{antibodies} that labeled each observation.
 #'     \item \code{antibodies_unscaled}: The prototypes back-transformed to
 #'     the original feature units.
 #'     \item \code{task}: The chosen task.

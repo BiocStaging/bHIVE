@@ -1,4 +1,5 @@
 AINet
+ARI
 ActivationGate
 Adagrad
 Annales
@@ -11,6 +12,7 @@ CMD
 Chemokine
 ClassSwitcher
 Codecov
+Cofactor
 Cohn
 Combinatorial
 Composable
@@ -18,13 +20,17 @@ ConvergentSelector
 Costimulatory
 Coutinho
 Coutinho's
+CyTOF
+Cytometry
 DAMPs
 Dimeric
 Evolvable
+FlowSOM
 Fo
 Freitas
 GC
 GerminalCenter
+HDCytoData
 Hotspot
 Hypermutation
 ICLR
@@ -43,6 +49,7 @@ Jerne's
 KDE
 Kingma
 Kleinstein's
+Louvain
 Lp
 MemoryPool
 Microenvironment
@@ -56,6 +63,7 @@ PAMPs
 Parallelization
 Pentameric
 Perelson
+Pre
 RBF
 README
 RGYW
@@ -65,11 +73,15 @@ SGD
 SHM
 SHMEngine
 SNE
+SOM
+SingleCellExperiment
 Springer
+SummarizedExperiment
 TCR
 Tfh
 Timmis
 UMAP
+UMAP's
 Underfitting
 VDJLibrary
 Varela
@@ -80,7 +92,10 @@ Zuben
 adagrad
 adam
 aiNet
+al
 anergized
+bHIVE's
+bHIVEParam
 bHIVES
 bHIVEmodel
 bHiVE
@@ -96,7 +111,9 @@ cdot
 chemokine
 chemokines
 clonotypes
+clusterCells
 coef
+cofactor
 combinatorial
 composable
 compositional
@@ -105,6 +122,7 @@ costimulatory
 crossentropy
 customPackage
 cytidine
+cytometry
 d'Immunologie
 dA
 davies
@@ -115,6 +133,7 @@ diag
 dt
 effector
 epitope
+et
 follicular
 frac
 gauss
@@ -149,6 +168,7 @@ mathbf
 mathcal
 maxClones
 medoid
+metaclusters
 microenvironment
 microenvironments
 microstructure
@@ -164,12 +184,14 @@ nSamples
 neq
 nmd
 nonself
+oldrel
 parallelization
 param
 paratope
 pca
 pentameric
 pkgdown
+pre
 pred
 propto
 quadratically
@@ -179,6 +201,9 @@ rfloor
 rmsprop
 roxygen
 runif
+runnable
+scRNA
+scran
 sds
 sgd
 stromal

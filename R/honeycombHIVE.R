@@ -92,11 +92,11 @@
 #'     \item \code{predictions}: For classification, the predicted label for
 #'     each original row: the majority label of its cluster.
 #'     \item \code{model}: Final layer only. The fitted \code{\link{AINet}}
-#'     model, for labelling new observations with \code{$predict()}.
+#'     model, for labeling new observations with \code{$predict()}.
 #'     \item \code{task}: The specified task.
 #'   }
 #'   For classification, each layer collapses observations by the antibody
-#'   that labelled them, so a layer keeps several prototypes per class.
+#'   that labeled them, so a layer keeps several prototypes per class.
 #'
 #' @importFrom stats median setNames
 #' @export
@@ -234,7 +234,7 @@ honeycombHIVE <- function(X, y = NULL,
 
 #' Refine a layer's antibodies with refineB() in the model's scaled space
 #'
-#' Each sample pulls (or pushes) the antibody that actually labelled it:
+#' Each sample pulls (or pushes) the antibody that actually labeled it:
 #' the cluster ID for clustering, antibody_index for classification.
 #' Clustering uses a single dummy class so every sample pulls.
 #' @keywords internal
@@ -264,7 +264,7 @@ honeycombHIVE <- function(X, y = NULL,
 #' Collapse a layer's clusters into prototypes for the next layer
 #'
 #' Groups the layer's input rows by cluster (clustering) or by the antibody
-#' that labelled them (classification), summarizes each group into one
+#' that labeled them (classification), summarizes each group into one
 #' prototype, handles small clusters, and maps the groups back to the
 #' original observations.
 #' @return list(prototypes, rowIndices, membership, predictions)

@@ -77,7 +77,7 @@ honeycombHIVEmodel <- list(
       g <- data.frame(nAntibodies = sample(10:50, len, replace = TRUE),
                       beta        = runif(len, 1, 10),
                       epsilon     = runif(len, 0.01, 0.1),
-                      layers      = sample(1:3, len, replace = TRUE))
+                      layers      = sample(seq_len(3), len, replace = TRUE))
     }
     g$refineOptimizer <- "adam"
     g$refineSteps <- 5

@@ -221,7 +221,7 @@ visualizeHIVE <- function(result, X = NULL,
 #' @keywords internal
 #' @noRd
 .viz_embed <- function(X, P, method, args) {
-  two <- function(m) m[, 1:2, drop = FALSE]
+  two <- function(m) m[, seq_len(2), drop = FALSE]
   if (method == "none") return(list(X = two(X), P = two(P)))
   if (method == "PCA") {
     if (is.null(args$scale.)) args$scale. <- TRUE
@@ -264,9 +264,9 @@ visualizeHIVE <- function(result, X = NULL,
 .viz_axis_labels <- function(method, X) {
   if (method == "none") {
     cn <- colnames(X)
-    return(if (is.null(cn)) c("Feature 1", "Feature 2") else cn[1:2])
+    return(if (is.null(cn)) c("Feature 1", "Feature 2") else cn[seq_len(2)])
   }
-  paste0(c(PCA = "PC", UMAP = "UMAP", tSNE = "tSNE")[[method]], 1:2)
+  paste0(c(PCA = "PC", UMAP = "UMAP", tSNE = "tSNE")[[method]], seq_len(2))
 }
 
 #' Scatterplot of observations and prototypes in shared coordinates

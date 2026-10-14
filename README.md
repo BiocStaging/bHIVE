@@ -11,13 +11,14 @@
 
 ### Overview
 
-**bHIVE** is an R package implementing a modular Artificial Immune System (AIS) framework for clustering and classification. Built on [AI-Net](https://www.dca.fee.unicamp.br/~vonzuben/research/lnunes_dout/artigos/DMHA.PDF) (de Castro & Von Zuben 2001), bHIVE extends the classical algorithm with biologically-grounded modules drawn from modern immunology: somatic hypermutation, idiotypic network regulation, germinal center selection, and microenvironment-driven adaptation.
+**bHIVE** is an R/Bioconductor package that implements a modular Artificial Immune System (AIS) for clustering and classification of high-dimensional data such as mass cytometry and single-cell profiles. Built on [AI-Net](https://www.dca.fee.unicamp.br/~vonzuben/research/lnunes_dout/artigos/DMHA.PDF) (de Castro & Von Zuben 2001), bHIVE learns a set of prototypes (antibodies) by clonal selection, mutation and network suppression. The prototypes summarize cell populations in the original marker units, and the same fitted model labels new cells. Optional modules drawn from immunology add somatic hypermutation strategies, germinal center selection, microenvironment-driven adaptation and more.
 
 Performance-critical operations (affinity/distance matrices, clonal selection, network suppression, mutation) are implemented in C++ via [RcppArmadillo](https://cran.r-project.org/package=RcppArmadillo), with parallelization support through [BiocParallel](https://bioconductor.org/packages/BiocParallel/).
 
 ### Key Features
 
-- **Two tasks** -- clustering and classification on numeric matrices
+- **Two tasks** -- clustering and classification on matrices, `SummarizedExperiment` and `SingleCellExperiment` objects
+- **Bioconductor integration** -- labels stored in `colData()`, and `bHIVEParam()` runs bHIVE through `bluster::clusterRows()` and `scran::clusterCells()`
 - **C++ backend** -- BLAS-optimized bulk affinity/distance computation
 - **Two APIs** -- functional (`bHIVE()`) for quick use and R6 (`AINet$new()`) for full module composition
 - **Multilayer architecture** -- `honeycombHIVE()` for hierarchical prototype refinement across layers
@@ -28,8 +29,18 @@ Performance-critical operations (affinity/distance matrices, clonal selection, n
 
 ## Installation
 
+bHIVE is submitted to Bioconductor. Once accepted, install it with:
+
 ```r
-devtools::install_github("BorchLab/bHIVE")
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("bHIVE")
+```
+
+The development version is available from GitHub:
+
+```r
+BiocManager::install("BorchLab/bHIVE")
 ```
 
 ## Quick Start
@@ -53,17 +64,37 @@ res <- bHIVE(X, y = iris$Species, task = "classification",
 table(Predicted = res$assignments, Actual = iris$Species)
 ```
 
+### Bioconductor objects
+
+`bHIVE()` clusters the cells (columns) of a `SingleCellExperiment` using an assay or a `reducedDim()` embedding, and stores the labels in `colData()`. `bHIVEParam()` plugs bHIVE into `bluster` and `scran`:
+
+```r
+library(SingleCellExperiment)
+sce <- SingleCellExperiment(assays = list(logcounts = t(X)))
+reducedDim(sce, "PCA") <- prcomp(X)$x[, 1:3]
+
+sce <- bHIVE(sce, use.dimred = "PCA", targetK = 3, verbose = FALSE)
+table(sce$bHIVE, iris$Species)
+
+colLabels(sce) <- scran::clusterCells(
+  sce, use.dimred = "PCA",
+  BLUSPARAM = bHIVEParam(targetK = 3, affinityParams = list(alpha = "auto"))
+)
+```
+
+See `vignette("bHIVE")` for a full analysis of mass cytometry data, including a comparison with FlowSOM and graph-based clustering.
+
 ### R6 API with Modules
 
 For full control, compose an `AINet` with any combination of immune modules. Each module is optional and slots into the fit loop at the appropriate biological stage:
 
 ```r
-# Adaptive mutation + idiotypic network regulation
+# Adaptive mutation + germinal center selection
 model <- AINet$new(
   nAntibodies = 20,
   maxIter = 30,
   shm = SHMEngine$new(method = "adaptive", base_rate = 0.1),
-  idiotypic = IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5),
+  germinalCenter = GerminalCenter$new(nTfh = 20, selectionPressure = 0.2),
   verbose = FALSE
 )
 model$fit(X, iris$Species, task = "classification")
@@ -108,7 +139,7 @@ bHIVE evolves a population of antibody vectors to represent structure in data. E
 3. **Clonal selection + SHM** -- top-k antibodies cloned per data point. Mutation dispatches through `SHMEngine` (`uniform`, `airs`, `hotspot`, `energy`, `adaptive`); the adaptive strategy threads per-antibody Adam-style moment matrices across iterations.
 4. **Germinal center selection** -- `GerminalCenter` runs Tfh-mediated quality selection; survivors weighted by clustering compactness or classification purity.
 5. **Microenvironment & class switching** -- `Microenvironment` classifies each antibody into stable / explore / boundary zones and applies density-dependent jitter. `ClassSwitcher` binds each zone to an isotype (IgM/IgG/IgA) and sets the next iteration's kernel width.
-6. **Idiotypic regulation** -- `IdiotypicNetwork` runs bell-shaped Ab-Ab dynamics that cull both over-clumped and isolated antibodies. Falls back to a top-population safety net if ill-tuned thresholds would kill the repertoire.
+6. **Idiotypic regulation** (experimental) -- `IdiotypicNetwork` runs bell-shaped Ab-Ab dynamics that cull both over-clumped and isolated antibodies in small, tight repertoires. The rule acts on each antibody pair, so in large or spread-out repertoires it removes every antibody; `AINet` then keeps the top 10% by population and reports it. See `?IdiotypicNetwork`.
 7. **Network suppression** -- removes near-duplicate antibodies within an epsilon-ball under the chosen distance metric.
 8. **Orphan pruning + final assignment** (once) -- antibodies that bind no training point are dropped; remaining cells produce cluster IDs or class predictions. `MemoryPool` archives high-affinity survivors back into the pool.
 
@@ -121,7 +152,7 @@ Each module is an R6 class that can be injected into `AINet` via its constructor
 | Module | Biological Basis | What It Does |
 |:-------|:-----------------|:-------------|
 | `SHMEngine` | Somatic hypermutation | 5 mutation strategies: uniform, airs, hotspot, energy, adaptive |
-| `IdiotypicNetwork` | Ab-Ab network regulation | Bell-shaped activation dynamics replacing epsilon-threshold suppression |
+| `IdiotypicNetwork` | Ab-Ab network regulation | Bell-shaped activation dynamics replacing epsilon-threshold suppression (experimental) |
 | `GerminalCenter` | Tfh-B cell interaction | Task-aware quality selection with resource competition |
 | `Microenvironment` | Tissue microenvironment cues | Density-dependent zone classification and mutation rate modulation |
 | `VDJLibrary` | V(D)J recombination | Combinatorial gene library initialization (PCA, cluster, random partition) |
@@ -153,9 +184,10 @@ Fine-tune antibody positions after training with `refineB()`:
 res <- bHIVE(X, y = iris$Species, task = "classification",
              nAntibodies = 20, maxIter = 20)
 
-# Adam-based refinement with cross-entropy loss
+# Adam-based refinement with cross-entropy loss. antibody_index gives the
+# antibody (row of res$antibodies) that labeled each sample.
 A_refined <- refineB(res$antibodies, X, y = iris$Species,
-                     assignments = res$assignments,
+                     assignments = res$antibody_index,
                      task = "classification",
                      loss = "categorical_crossentropy",
                      optimizer = "adam", steps = 10, lr = 0.01)

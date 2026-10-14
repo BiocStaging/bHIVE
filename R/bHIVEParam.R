@@ -41,7 +41,7 @@
 #'   \code{x}. With \code{full = TRUE} it returns a list with
 #'   \code{clusters} and \code{objects}, where \code{objects$bHIVE} is the
 #'   \code{bHIVE()} result, including the fitted \code{\link{AINet}} model
-#'   in \code{objects$bHIVE$model} for labelling new cells.
+#'   in \code{objects$bHIVE$model} for labeling new cells.
 #'
 #' @seealso \code{\link{bHIVE}}, \code{\link[bluster]{clusterRows}},
 #'   \code{\link[bluster]{clusterSweep}}.
@@ -56,7 +56,7 @@
 #' clusters <- clusterRows(X, p)
 #' table(clusters, iris$Species)
 #'
-#' # Full output keeps the fitted model for labelling new cells
+#' # Full output keeps the fitted model for labeling new cells
 #' out <- clusterRows(X, p, full = TRUE)
 #' out$objects$bHIVE$model$predict(X[1:5, ])
 #'

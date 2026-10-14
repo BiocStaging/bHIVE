@@ -114,7 +114,7 @@ X <- as.matrix(iris[, 1:4])
 y <- iris$Species
 res <- bHIVE(X, y, task = "classification", nAntibodies = 10,
              maxIter = 5, verbose = FALSE)
-# antibody_index gives the antibody (row of res$antibodies) that labelled
+# antibody_index gives the antibody (row of res$antibodies) that labeled
 # each sample
 A_refined <- refineB(res$antibodies, X, y = y,
                      assignments = res$antibody_index,

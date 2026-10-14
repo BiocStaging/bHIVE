@@ -603,11 +603,10 @@ AINet <- R6::R6Class(
     .report_idiotypic_fallbacks = function(ctx) {
       n_fb <- ctx$idi_fallbacks %||% 0L
       if (n_fb > 0L) {
-        message(sprintf(paste0(
-          "IdiotypicNetwork removed every antibody in %d of %d iterations; ",
-          "the top 10%% by population were kept each time. See ",
-          "?IdiotypicNetwork for when the module applies."),
-          n_fb, length(self$history)))
+        message("IdiotypicNetwork removed every antibody in ", n_fb, " of ",
+                length(self$history), " iterations; the top 10% by ",
+                "population were kept each time. See ?IdiotypicNetwork for ",
+                "when the module applies.")
       }
       invisible(NULL)
     },
@@ -739,7 +738,7 @@ AINet <- R6::R6Class(
         antibodies_unscaled =
           private$.invert_scaling(A_final, cfg$scaling),
         task             = ctx$task,
-        # Row of `antibodies` that labelled each training point.
+        # Row of `antibodies` that labeled each training point.
         antibody_index   = as.integer(fa$best_antibody_idx)
       )
       invisible(NULL)
