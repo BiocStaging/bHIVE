@@ -494,3 +494,124 @@ test_that("AINet runs with all five SHM strategies in classification", {
     expect_equal(length(model$result$assignments), nrow(X))
   }
 })
+
+# ==== Read-out consistency: predict() reproduces the training labels ====
+
+test_that("predict() works after alpha = 'auto' and matches training", {
+  set.seed(11)
+  model <- AINet$new(nAntibodies = 20, maxIter = 10, scale = "zscore",
+                     affinityParams = list(alpha = "auto"), verbose = FALSE)
+  model$fit(X, y_class)
+  expect_true(is.numeric(model$config$kernel$alpha))
+  expect_identical(model$predict(X), model$result$assignments)
+})
+
+test_that("cluster predict() uses the metric that produced the labels", {
+  # Consolidation labels come from a Euclidean E-step, so predict() must not
+  # fall back to the training distFunc (manhattan here).
+  set.seed(12)
+  model <- AINet$new(nAntibodies = 20, maxIter = 10, affinityFunc = "laplace",
+                     distFunc = "manhattan", verbose = FALSE)
+  model$fit(X)
+  expect_equal(model$config$kernel$assignDist, "euclidean")
+  expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+  expect_equal(nrow(model$result$antibodies),
+               length(unique(model$result$assignments)))
+})
+
+test_that("unconsolidated prototypes line up with cluster labels", {
+  set.seed(13)
+  model <- AINet$new(nAntibodies = 15, maxIter = 6, consolidate = FALSE,
+                     coverageBoost = TRUE, verbose = FALSE)
+  model$fit(X)
+  expect_equal(model$config$kernel$assignDist, "euclidean")
+  expect_equal(nrow(model$result$antibodies),
+               length(unique(model$result$assignments)))
+  expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+})
+
+test_that("predict() uses the ClassSwitcher-modulated bandwidth", {
+  set.seed(14)
+  model <- AINet$new(nAntibodies = 30, maxIter = 6, verbose = FALSE,
+                     microenvironment = Microenvironment$new(),
+                     classSwitcher = ClassSwitcher$new())
+  model$fit(X, y_class)
+  expect_identical(model$predict(X), model$result$assignments)
+})
+
+test_that("classification result records the labelling antibody", {
+  set.seed(15)
+  model <- AINet$new(nAntibodies = 20, maxIter = 5, verbose = FALSE)
+  model$fit(X, y_class)
+  idx <- model$result$antibody_index
+  expect_length(idx, nrow(X))
+  expect_identical(model$result$antibody_classes[idx],
+                   model$result$assignments)
+})
+
+test_that("history resets between fits", {
+  set.seed(16)
+  model <- AINet$new(nAntibodies = 15, maxIter = 4, verbose = FALSE)
+  model$fit(X)
+  model$fit(X)
+  expect_length(model$history, 4L)
+})
+
+test_that("memory recall works with alpha = 'auto'", {
+  set.seed(17)
+  mem <- MemoryPool$new(archive_threshold = 0.001, recall_threshold = 0)
+  model <- AINet$new(nAntibodies = 15, maxIter = 3, memory = mem,
+                     affinityParams = list(alpha = "auto"), verbose = FALSE)
+  model$fit(X)
+  expect_gt(mem$size(), 0L)
+  expect_no_error(model$fit(X))
+})
+
+test_that("progress messages can be silenced with suppressMessages()", {
+  set.seed(18)
+  model <- AINet$new(nAntibodies = 10, maxIter = 3, coverageBoost = TRUE,
+                     affinityParams = list(alpha = "auto"), verbose = TRUE)
+  msgs <- capture_messages(model$fit(X))
+  expect_true(any(grepl("Iteration 1", msgs)))
+  expect_true(any(grepl("Auto bandwidth", msgs)))
+  expect_silent(suppressMessages(model$fit(X)))
+})
+
+# ==== Forced-K Lloyd refinement ====
+
+test_that(".fill_empty_clusters restores every label without emptying singletons", {
+  Xs <- rbind(c(0, 0), c(0, 1), c(10, 10), c(10, 11), c(50, 50))
+  filled <- .fill_empty_clusters(Xs, c(1L, 1L, 2L, 2L, 2L), K = 3L)
+  expect_setequal(filled, 1:3)
+  # The point farthest from its own cluster mean (the outlier) moves.
+  expect_equal(filled[5], 3L)
+  expect_identical(.fill_empty_clusters(Xs, c(1L, 2L, 3L, 3L, 3L), 3L),
+                   c(1L, 2L, 3L, 3L, 3L))
+})
+
+test_that("targetK refinement keeps exactly K clusters from a gapped seed", {
+  set.seed(19)
+  model <- AINet$new(nAntibodies = 10, maxIter = 2, verbose = FALSE)
+  model$fit(X)
+  lloyd <- model$.__enclos_env__$private$.lloyd_refine
+  cent  <- X[c(1, 51, 101, 2), ]
+  seed  <- rep(c(1L, 2L, 3L), each = 50)   # label 4 starts empty
+  out <- lloyd(X, cent, seed, steps = 30L, cfg = model$config,
+               alpha = 1, c_p = 1, p_p = 2, Sigma_inv = matrix(0, 0, 0),
+               K = 4L)
+  expect_equal(sort(unique(out$assignments)), 1:4)
+  expect_equal(nrow(out$antibodies), 4L)
+  free <- lloyd(X, cent, seed, steps = 30L, cfg = model$config,
+                alpha = 1, c_p = 1, p_p = 2, Sigma_inv = matrix(0, 0, 0))
+  expect_equal(nrow(free$antibodies), length(unique(free$assignments)))
+})
+
+test_that("targetK returns K clusters and predict() reproduces them", {
+  set.seed(20)
+  model <- AINet$new(nAntibodies = 30, maxIter = 6, targetK = 6,
+                     verbose = FALSE)
+  model$fit(X)
+  expect_equal(length(unique(model$result$assignments)), 6L)
+  expect_equal(nrow(model$result$antibodies), 6L)
+  expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+})

@@ -180,7 +180,8 @@ defines "poorly covered" points for \code{coverageBoost}. Default 0.05.}
 
 \item{\code{classSwitcher}}{A ClassSwitcher instance or NULL.}
 
-\item{\code{verbose}}{Logical. Print progress.}
+\item{\code{verbose}}{Logical. Report progress with \code{message()}, so it can
+be silenced with \code{suppressMessages()}.}
 }
 \if{html}{\out{</div>}}
 }

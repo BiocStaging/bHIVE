@@ -73,9 +73,14 @@ ImmuneAlgorithm <- R6::R6Class(
         newdata <- .bhive_apply_scaling(newdata, cfg$scaling)
       }
 
-      alpha <- cfg$affinityParams$alpha %||% 1
-      c_p   <- cfg$affinityParams$c %||% 1
-      p_p   <- cfg$affinityParams$p %||% 2
+      # Use the kernel the fit actually read out with (resolved alpha = "auto"
+      # bandwidth, ClassSwitcher-modulated alpha, and the metric that
+      # produced the training labels), so predict() on the training data
+      # reproduces the training assignments.
+      kern  <- cfg$kernel
+      alpha <- kern$alpha %||% cfg$affinityParams$alpha %||% 1
+      c_p   <- kern$c %||% cfg$affinityParams$c %||% 1
+      p_p   <- kern$p %||% cfg$affinityParams$p %||% 2
       Sigma_inv <- if (!is.null(cfg$affinityParams$Sigma)) {
         solve(cfg$affinityParams$Sigma)
       } else {
@@ -85,7 +90,7 @@ ImmuneAlgorithm <- R6::R6Class(
       fa <- final_assignment_cpp(
         newdata, A,
         cfg$affinityFunc %||% "gaussian",
-        cfg$distFunc %||% "euclidean",
+        kern$assignDist %||% cfg$distFunc %||% "euclidean",
         switch(task, clustering = 0L, classification = 1L),
         alpha, c_p, p_p, Sigma_inv
       )

@@ -89,7 +89,8 @@ AINet <- R6::R6Class(
     #'   candidate prototypes for sparse populations. Default FALSE.
     #' @param coverageQuantile Numeric in (0, 1). Affinity-coverage tail that
     #'   defines "poorly covered" points for \code{coverageBoost}. Default 0.05.
-    #' @param verbose Logical. Print progress.
+    #' @param verbose Logical. Report progress with \code{message()}, so it can
+    #'   be silenced with \code{suppressMessages()}.
     initialize = function(nAntibodies = 20, beta = 5, epsilon = 0.01,
                           maxIter = 50, k = 3,
                           affinityFunc = "gaussian", distFunc = "euclidean",
@@ -128,9 +129,10 @@ AINet <- R6::R6Class(
       # (ctx) and run in a fixed order, because several stages draw random
       # numbers and results are reproducible only under this order.
       ctx <- private$.fit_setup(X, y, task)
-      private$.fit_init_repertoire(ctx)
-      private$.fit_task_setup(ctx)
+      private$.fit_seed_antibodies(ctx)
       private$.fit_kernel_setup(ctx)
+      private$.fit_recall_memory(ctx)
+      private$.fit_task_setup(ctx)
       private$.fit_shm_setup(ctx)
       private$.fit_loop_setup(ctx)
       for (iter in seq_len(ctx$cfg$maxIter)) {
@@ -170,6 +172,7 @@ AINet <- R6::R6Class(
       scaling <- private$.learn_scaling(X, self$config$scale,
                                         self$config$scaleCofactor)
       self$config$scaling <- scaling
+      self$history <- list()
 
       ctx <- new.env(parent = emptyenv())
       ctx$X    <- private$.apply_scaling(X, scaling)
@@ -181,29 +184,35 @@ AINet <- R6::R6Class(
       ctx
     },
 
-    # --- 1. Initial antibody population (+ memory recall) -------------------
-    .fit_init_repertoire = function(ctx) {
+    # --- 1. Initial antibody population -------------------------------------
+    .fit_seed_antibodies = function(ctx) {
       cfg <- ctx$cfg
-      A <- private$.initialize_antibodies(ctx$X, cfg$nAntibodies,
-                                          cfg$initMethod,
-                                          init_lib = self$modules$init)
+      ctx$A0 <- private$.initialize_antibodies(ctx$X, cfg$nAntibodies,
+                                               cfg$initMethod,
+                                               init_lib = self$modules$init)
+      invisible(NULL)
+    },
 
-      # Memory recall (clustering only): merge relevant prior memory cells
-      # into the starting repertoire. Disabled for classification because
-      # MemoryPool$recall returns cells without their original class labels.
+    # Memory recall (clustering only): merge relevant prior memory cells into
+    # the starting repertoire, then build it. Runs after the kernel setup so
+    # recall uses the resolved bandwidth when alpha = "auto". Disabled for
+    # classification because MemoryPool$recall returns cells without their
+    # original class labels.
+    .fit_recall_memory = function(ctx) {
+      A   <- ctx$A0
       mem <- self$modules$memory
       if (ctx$task == "clustering" && !is.null(mem) && mem$size() > 0L) {
         recalled <- mem$recall(ctx$X,
-                               affinityFunc = cfg$affinityFunc,
-                               affinityParams = list(
-                                 alpha = cfg$affinityParams$alpha %||% 1,
-                                 c     = cfg$affinityParams$c %||% 1,
-                                 p     = cfg$affinityParams$p %||% 2))
+                               affinityFunc = ctx$cfg$affinityFunc,
+                               affinityParams = list(alpha = ctx$iter_alpha,
+                                                     c = ctx$c_p,
+                                                     p = ctx$p_p))
         if (nrow(recalled) > 0 && ncol(recalled) == ctx$d) {
           A <- rbind(A, recalled)
         }
       }
       self$repertoire <- ImmuneRepertoire$new(A)
+      ctx$A0 <- NULL
       invisible(NULL)
     },
 
@@ -613,12 +622,19 @@ AINet <- R6::R6Class(
     },
 
     # --- 4b. Final assignment -----------------------------------------------
+    # The kernel actually used for the read-out is stored on the config so
+    # predict() reproduces the training assignments exactly: the resolved
+    # bandwidth (alpha = "auto", ClassSwitcher modulation) and the metric
+    # that produced the labels (Euclidean after Lloyd refinement).
     .fit_final_assignment = function(ctx) {
+      ctx$assign_dist <- ctx$cfg$distFunc
       if (ctx$task == "clustering") {
         private$.final_clustering(ctx)
       } else {
         private$.final_classification(ctx)
       }
+      self$config$kernel <- list(alpha = ctx$iter_alpha, c = ctx$c_p,
+                                 p = ctx$p_p, assignDist = ctx$assign_dist)
       invisible(NULL)
     },
 
@@ -634,16 +650,20 @@ AINet <- R6::R6Class(
       if (!is.null(cfg$targetK)) {
         out <- private$.force_k(X, A_final, cfg$targetK, cfg, ctx$iter_alpha,
                                 ctx$c_p, ctx$p_p, ctx$Sigma_inv)
+        ctx$assign_dist <- "euclidean"
       } else if (cfg$consolidate && cfg$consolidationSteps > 0L &&
                  nrow(A_final) >= 2L) {
         out <- private$.consolidate_clusters(X, A_final, cfg, ctx$iter_alpha,
                                              ctx$c_p, ctx$p_p, ctx$Sigma_inv)
+        ctx$assign_dist <- "euclidean"
       } else {
         fa <- final_assignment_cpp(X, A_final, cfg$affinityFunc, cfg$distFunc,
                                    0L, ctx$iter_alpha, ctx$c_p, ctx$p_p,
                                    ctx$Sigma_inv)
-        out <- list(antibodies  = A_final,
-                    assignments = as.numeric(factor(fa$assignments)))
+        # Keep only antibodies that win points so row i is cluster i.
+        used <- sort(unique(fa$assignments))
+        out  <- list(antibodies  = A_final[used, , drop = FALSE],
+                     assignments = as.numeric(match(fa$assignments, used)))
       }
       self$result <- list(
         antibodies  = out$antibodies,
@@ -669,7 +689,9 @@ AINet <- R6::R6Class(
         antibody_classes = ctx$antibody_classes,
         antibodies_unscaled =
           private$.invert_scaling(A_final, cfg$scaling),
-        task             = ctx$task
+        task             = ctx$task,
+        # Row of `antibodies` that labelled each training point.
+        antibody_index   = as.integer(fa$best_antibody_idx)
       )
       invisible(NULL)
     },
@@ -764,8 +786,8 @@ AINet <- R6::R6Class(
       assign <- as.integer(final_assignment_cpp(
         X, cent, cfg$affinityFunc, cfg$distFunc, 1L,
         alpha, c_p, p_p, Sigma_inv)$best_antibody_idx)
-      private$.lloyd_refine(X, cent, assign, max(cfg$consolidationSteps, 10L),
-                            cfg, alpha, c_p, p_p, Sigma_inv)
+      private$.lloyd_refine(X, cent, assign, max(cfg$consolidationSteps, 30L),
+                            cfg, alpha, c_p, p_p, Sigma_inv, K = K)
     },
 
     # Lloyd-style consolidation of matured antibodies into data-space
@@ -790,28 +812,41 @@ AINet <- R6::R6Class(
     # also Euclidean, which keeps the steps consistent and monotone. This is
     # independent of the training affinity: the affinity drove the search,
     # refinement commits the prototypes to the data manifold.
+    #
+    # With K set (targetK), a cluster that empties is re-seeded at the point
+    # farthest from its own centroid before each M-step, so the partition
+    # keeps exactly K clusters instead of silently losing some.
+    #
+    # The returned labels are the last E-step against the returned
+    # prototypes, and only prototypes that win points are kept, so row i of
+    # `antibodies` is cluster i and predict() on the training data
+    # reproduces `assignments`.
     .lloyd_refine = function(X, cent, assign, steps, cfg, alpha, c_p, p_p,
-                             Sigma_inv) {
-      d <- ncol(X)
+                             Sigma_inv, K = NULL) {
       prev <- NULL
       for (s in seq_len(steps)) {
-        ks <- sort(unique(assign))
+        if (!is.null(K)) assign <- .fill_empty_clusters(X, assign, K)
         # M-step: each prototype is the mean of the points assigned to it.
-        cent <- t(vapply(ks, function(g)
-          colMeans(X[assign == g, , drop = FALSE]), numeric(d)))
+        cent <- .cluster_means(X, assign)
         # E-step: reassign points to the nearest prototype (L2).
         new_assign <- as.integer(final_assignment_cpp(
           X, cent, cfg$affinityFunc, "euclidean", 0L,
           alpha, c_p, p_p, Sigma_inv)$assignments)
-        if (!is.null(prev) && identical(new_assign, prev)) {
-          assign <- new_assign
-          break
-        }
+        converged <- !is.null(prev) && identical(new_assign, prev)
         prev   <- new_assign
         assign <- new_assign
+        if (converged) break
       }
-      list(antibodies  = cent,
-           assignments = as.numeric(factor(assign)))
+      used <- sort(unique(assign))
+      if (!is.null(K) && length(used) < min(K, nrow(X))) {
+        # Ran out of steps with a cluster still empty: re-seed it and take a
+        # final M-step so the partition has exactly K clusters.
+        assign <- .fill_empty_clusters(X, assign, K)
+        return(list(antibodies  = .cluster_means(X, assign),
+                    assignments = as.numeric(assign)))
+      }
+      list(antibodies  = cent[used, , drop = FALSE],
+           assignments = as.numeric(match(assign, used)))
     },
 
     .initialize_antibodies = function(X, nAntibodies, method, init_lib = NULL) {
@@ -846,6 +881,43 @@ AINet <- R6::R6Class(
     }
   )
 )
+
+
+# ============================================================================
+# Internal Lloyd helpers
+# ============================================================================
+
+#' Per-cluster means, one row per label in sort(unique(assign))
+#' @keywords internal
+#' @noRd
+.cluster_means <- function(X, assign) {
+  ks <- sort(unique(assign))
+  t(vapply(ks, function(g) colMeans(X[assign == g, , drop = FALSE]),
+           numeric(ncol(X))))
+}
+
+#' Re-seed empty clusters so labels 1..K are all present
+#'
+#' Each missing label takes the point farthest (squared L2) from its own
+#' cluster mean, never emptying a singleton. This is the standard k-means fix
+#' for empty clusters and keeps a forced-K partition at exactly K.
+#' @param assign Integer labels in 1..K, possibly with gaps.
+#' @param K Number of clusters wanted. Must not exceed nrow(X).
+#' @keywords internal
+#' @noRd
+.fill_empty_clusters <- function(X, assign, K) {
+  missing <- setdiff(seq_len(K), assign)
+  for (g in missing) {
+    ks    <- sort(unique(assign))
+    cent  <- .cluster_means(X, assign)
+    own   <- cent[match(assign, ks), , drop = FALSE]
+    d2    <- rowSums((X - own)^2)
+    sizes <- tabulate(assign, nbins = K)
+    d2[sizes[assign] <= 1L] <- -Inf
+    assign[which.max(d2)] <- g
+  }
+  assign
+}
 
 
 # ============================================================================
