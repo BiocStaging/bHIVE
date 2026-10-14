@@ -2,7 +2,7 @@
 
 X <- as.matrix(iris[, 1:4])
 y <- iris$Species
-one_row <- data.frame(nAntibodies = 20, beta = 5, epsilon = 0.05)
+one_row <- data.frame(nAntibodies = 40, beta = 5, epsilon = 0.05)
 # caret signals a failed resample with these warnings. Other warnings (for
 # example from attaching caret's dependencies) still surface as usual.
 fold_failure <- "fit failed|missing values in resampled"

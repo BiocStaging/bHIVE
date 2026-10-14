@@ -711,3 +711,61 @@ test_that("classification memory archives class labels", {
   expect_identical(m$repertoire$metadata$class_label,
                    m$result$antibody_classes)
 })
+
+# ==== Class-stratified seeding ====
+
+# Two large classes and a class of 6 observations that sits next to big1,
+# the way rare cytometry populations sit next to related abundant ones.
+imbalanced <- function() {
+  set.seed(40)
+  X <- rbind(matrix(rnorm(400, 0, 0.5), ncol = 2),
+             matrix(rnorm(400, 4, 0.5), ncol = 2),
+             cbind(rnorm(6, 1.6, 0.15), rnorm(6, 0, 0.15)))
+  y <- factor(rep(c("big1", "big2", "rare"), c(200, 200, 6)))
+  list(X = X, y = y)
+}
+
+test_that("stratified seeding lets a rare class be predicted", {
+  d <- imbalanced()
+  rare_recall <- function(mpc) {
+    mean(vapply(1:10, function(s) {
+      set.seed(s)
+      m <- AINet$new(nAntibodies = 60, k = 1, maxIter = 5, minPerClass = mpc,
+                     verbose = FALSE)
+      m$fit(d$X, d$y)
+      mean(m$predict(d$X)[d$y == "rare"] == "rare")
+    }, numeric(1)))
+  }
+  stratified <- rare_recall(5)
+  expect_gt(stratified, 0.85)
+  expect_gt(stratified, rare_recall(0))
+})
+
+test_that("seeding quotas follow class shares with a per-class floor", {
+  d <- imbalanced()
+  m <- AINet$new(nAntibodies = 20, minPerClass = 4, verbose = FALSE)
+  seeded <- m$.__enclos_env__$private$.stratified_antibodies(
+    d$X, d$y, m$config)
+  # big classes: round(20 * 200/406) = 10 each; rare: max(4, 0) = 4
+  expect_equal(as.vector(table(seeded$classes)), c(10, 10, 4))
+  expect_equal(nrow(seeded$A), 24L)
+  # rare seeds are drawn from the rare observations
+  rare_rows <- d$X[d$y == "rare", , drop = FALSE]
+  expect_true(all(apply(seeded$A[seeded$classes == "rare", , drop = FALSE], 1,
+                        function(a) any(colSums(t(rare_rows) == a) == 2))))
+})
+
+test_that("unused class levels get no antibodies", {
+  d <- imbalanced()
+  y <- factor(d$y, levels = c(levels(d$y), "empty"))
+  m <- AINet$new(nAntibodies = 10, maxIter = 3, verbose = FALSE)
+  expect_no_error(m$fit(d$X, y))
+  expect_false("empty" %in% m$result$antibody_classes)
+})
+
+test_that("minPerClass is validated and an empty initialization is rejected", {
+  expect_error(AINet$new(minPerClass = -1), "minPerClass")
+  empty_init <- list(generate = function(n, X) X[0, , drop = FALSE])
+  m <- AINet$new(init = empty_init, verbose = FALSE)
+  expect_error(m$fit(X), "non-empty matrix")
+})

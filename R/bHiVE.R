@@ -150,7 +150,8 @@
 #' immunology modules (\code{shm}, \code{idiotypic}, \code{germinalCenter},
 #' \code{microenvironment}, \code{activation}, \code{memory},
 #' \code{classSwitcher}, \code{init}), \code{consolidate} /
-#' \code{consolidationSteps} and \code{coverageBoost}. For the
+#' \code{consolidationSteps}, \code{coverageBoost} and, for classification,
+#' \code{minPerClass} (antibodies seeded per class, default 5). For the
 #' SummarizedExperiment methods, all arguments of the matrix method.
 #'
 #' @return For matrix or data frame input, a list:

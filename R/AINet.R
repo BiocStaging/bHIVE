@@ -93,6 +93,15 @@ AINet <- R6::R6Class(
     #'   candidate prototypes for sparse populations. Default FALSE.
     #' @param coverageQuantile Numeric in (0, 1). Affinity-coverage tail that
     #'   defines "poorly covered" points for \code{coverageBoost}. Default 0.05.
+    #' @param minPerClass Integer. Classification only. Antibodies are seeded
+    #'   per class: each class gets \code{max(minPerClass, round(nAntibodies *
+    #'   class share))} antibodies drawn from its own observations with
+    #'   \code{initMethod}, and starts with that class label. Without this, a
+    #'   rare class (for example a population of a few cells in a cytometry
+    #'   sample) often receives no antibody at all and can never be
+    #'   predicted. The total can slightly exceed \code{nAntibodies}. Set to 0
+    #'   to sample all observations without regard to class. Ignored when an
+    #'   \code{init} module is supplied. Default 5.
     #' @param verbose Logical. Report progress with \code{message()}, so it can
     #'   be silenced with \code{suppressMessages()}.
     initialize = function(nAntibodies = 20, beta = 5, epsilon = 0.01,
@@ -107,7 +116,7 @@ AINet <- R6::R6Class(
                           scale = c("none", "zscore", "robust", "arcsinh"),
                           scaleCofactor = 5, targetK = NULL,
                           epsilonQuantile = NULL, coverageBoost = FALSE,
-                          coverageQuantile = 0.05,
+                          coverageQuantile = 0.05, minPerClass = 5,
                           shm = NULL, init = NULL, activation = NULL,
                           idiotypic = NULL, germinalCenter = NULL,
                           microenvironment = NULL, memory = NULL,
@@ -189,11 +198,24 @@ AINet <- R6::R6Class(
     },
 
     # --- 1. Initial antibody population -------------------------------------
+    # Classification without an init module seeds antibodies per class so
+    # rare classes are represented from the start (see minPerClass).
     .fit_seed_antibodies = function(ctx) {
       cfg <- ctx$cfg
-      ctx$A0 <- private$.initialize_antibodies(ctx$X, cfg$nAntibodies,
-                                               cfg$initMethod,
-                                               init_lib = self$modules$init)
+      if (ctx$task == "classification" && cfg$minPerClass > 0 &&
+          is.null(self$modules$init)) {
+        seeded <- private$.stratified_antibodies(ctx$X, ctx$y, cfg)
+        ctx$A0 <- seeded$A
+        ctx$seed_classes <- seeded$classes
+      } else {
+        ctx$A0 <- private$.initialize_antibodies(ctx$X, cfg$nAntibodies,
+                                                 cfg$initMethod,
+                                                 init_lib = self$modules$init)
+      }
+      if (!is.matrix(ctx$A0) || nrow(ctx$A0) == 0L || ncol(ctx$A0) != ctx$d) {
+        stop("Antibody initialization must return a non-empty matrix with ",
+             "one column per feature.", call. = FALSE)
+      }
       invisible(NULL)
     },
 
@@ -293,7 +315,11 @@ AINet <- R6::R6Class(
       ctx$noImproveCount <- 0
       ctx$prevCount      <- m
       ctx$antibody_classes <- if (ctx$task == "classification") {
-        sample(ctx$classes, size = m, replace = TRUE)
+        if (length(ctx$seed_classes) == m) {
+          ctx$seed_classes
+        } else {
+          sample(ctx$classes, size = m, replace = TRUE)
+        }
       } else {
         rep(NA_character_, m)
       }
@@ -853,6 +879,22 @@ AINet <- R6::R6Class(
            assignments = as.numeric(match(assign, used)))
     },
 
+    # Per-class antibody seeds: quota_c = max(minPerClass, round(nAntibodies *
+    # n_c / n)), drawn from class c's own observations with initMethod.
+    # Classes with no observations (unused factor levels) get none.
+    .stratified_antibodies = function(X, y, cfg) {
+      counts  <- table(y)
+      present <- names(counts)[counts > 0]
+      share   <- as.numeric(counts[present]) / sum(counts)
+      quota   <- pmax(as.integer(cfg$minPerClass),
+                      as.integer(round(cfg$nAntibodies * share)))
+      parts <- lapply(seq_along(present), function(i) {
+        Xc <- X[y == present[i], , drop = FALSE]
+        private$.initialize_antibodies(Xc, quota[i], cfg$initMethod)
+      })
+      list(A = do.call(rbind, parts), classes = rep(present, quota))
+    },
+
     .initialize_antibodies = function(X, nAntibodies, method, init_lib = NULL) {
       # When a VDJLibrary (or any object exposing $generate(n, X)) is supplied
       # via the `init` module, route initialization through V(D)J combinatorial
@@ -952,6 +994,9 @@ AINet <- R6::R6Class(
                 is.numeric(args$targetK) && length(args$targetK) == 1L &&
                 args$targetK >= 1)
   }
+  stopifnot("minPerClass must be a non-negative integer" =
+              is.numeric(args$minPerClass) && length(args$minPerClass) == 1L &&
+              args$minPerClass >= 0)
   q <- args$epsilonQuantile
   if (!is.null(q)) {
     stopifnot("epsilonQuantile must be in (0, 1)" =
@@ -1025,6 +1070,7 @@ AINet <- R6::R6Class(
     epsilonQuantile    = args$epsilonQuantile,
     coverageBoost      = isTRUE(args$coverageBoost),
     coverageQuantile   = args$coverageQuantile,
+    minPerClass        = as.integer(args$minPerClass),
     scaling            = NULL,  # populated at fit() with learned stats
     verbose            = args$verbose
   )
