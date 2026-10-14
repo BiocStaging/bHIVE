@@ -15,17 +15,14 @@ Imports:
     bluster,
     cluster,
     clusterCrit,
-    ggplot2,
+    ggplot2 (>= 3.4.0),
     methods,
     R6,
     Rcpp,
-    Rtsne,
     S4Vectors,
     SingleCellExperiment,
     stats,
-    SummarizedExperiment,
-    umap,
-    viridis
+    SummarizedExperiment
 LinkingTo:
     Rcpp,
     RcppArmadillo
@@ -36,9 +33,12 @@ Suggests:
     knitr,
     pkgdown,
     rmarkdown,
+    Rtsne,
     scran,
     spelling,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    umap,
+    viridis
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Language: en-US

@@ -1,5 +1,3 @@
-utils::globalVariables(c("PC1", "PC2", "Group", "Feature", "Prototype", "Layer"))
-
 #' Null-coalesce operator
 #'
 #' Returns \code{x} if it is not \code{NULL}, otherwise returns \code{y}.
