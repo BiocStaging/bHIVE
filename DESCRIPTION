@@ -12,6 +12,7 @@ Depends:
     R (>= 4.5.0)
 Imports:
     BiocParallel,
+    bluster,
     cluster,
     clusterCrit,
     ggplot2,
@@ -35,6 +36,7 @@ Suggests:
     knitr,
     pkgdown,
     rmarkdown,
+    scran,
     spelling,
     testthat (>= 3.0.0)
 VignetteBuilder: knitr
