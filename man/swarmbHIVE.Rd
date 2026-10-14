@@ -24,9 +24,13 @@ If \code{NULL}, clustering is performed.}
 
 \item{task}{Character. One of \code{"clustering"} or \code{"classification"}.}
 
-\item{grid}{A data frame specifying the hyperparameter combinations.
-Should have columns: \code{nAntibodies}, \code{beta}, \code{epsilon}.
-(Optionally more if you want to pass other arguments to \code{bHIVE()}.)}
+\item{grid}{A data frame specifying the hyperparameter combinations, one
+row per combination. Any column named after a \code{\link{bHIVE}} or
+\code{\link{AINet}} argument is tuned (for example \code{nAntibodies},
+\code{beta}, \code{epsilon}, \code{targetK}, \code{scale},
+\code{affinityFunc} or \code{coverageBoost}). Other columns are ignored.
+Factor columns, as produced by \code{expand.grid()}, are converted to
+character.}
 
 \item{metric}{Character. Name of the evaluation metric. Options:
 \itemize{
@@ -34,14 +38,15 @@ Should have columns: \code{nAntibodies}, \code{beta}, \code{epsilon}.
   \item \strong{Clustering}: "silhouette", "davies_bouldin", "calinski_harabasz"
 }}
 
-\item{maxIter}{Integer. Maximum iterations for each \code{bHIVE} run 
-(default 50).}
+\item{maxIter}{Integer. Maximum iterations for each \code{bHIVE} run
+(default 50). A \code{maxIter} column in \code{grid} takes precedence.}
 
 \item{BPPARAM}{Character. A BiocParallel::bpparam() object that can be used 
 for parallelization. The function supports \code{SerialParam}, \code{MulticoreParam}, 
 \code{BatchtoolsParam}, and \code{SnowParam}.}
 
-\item{verbose}{Logical. If \code{TRUE}, prints progress messages.}
+\item{verbose}{Logical. If \code{TRUE}, reports progress with
+\code{message()}.}
 }
 \value{
 A list:
