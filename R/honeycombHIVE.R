@@ -191,7 +191,7 @@ honeycombHIVE <- function(X,
     bHIVE_args <- c(bHIVE_args, extra_args)
     
     # 1c) Run bHIVE on the current layer's data
-    res_layer <- do.call(bHIVE, bHIVE_args)
+    res_layer <- do.call(.bHIVE_matrix, bHIVE_args)
     # Drop the heavy fitted R6 engine; honeycomb only needs the prototypes and
     # assignments per layer, and keeping one repertoire object per layer would
     # bloat the returned hierarchy.

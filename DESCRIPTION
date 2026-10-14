@@ -15,10 +15,14 @@ Imports:
     cluster,
     clusterCrit,
     ggplot2,
+    methods,
     R6,
     Rcpp,
     Rtsne,
+    S4Vectors,
+    SingleCellExperiment,
     stats,
+    SummarizedExperiment,
     umap,
     viridis
 LinkingTo:

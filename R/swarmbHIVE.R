@@ -205,15 +205,14 @@ swarmbHIVE <- function(X,
     # silently dropped.
     args <- as.list(params_row)
     args$metric_value <- NULL
-    bhive_formals <- names(formals(bHIVE))
-    args <- args[intersect(names(args), bhive_formals)]
+    args <- args[intersect(names(args), .bhive_tunable_args())]
     args$X       <- X
     args$y       <- y
     args$task    <- task
     args$maxIter <- maxIter
     args$verbose <- FALSE  # override local verbose to reduce console clutter
 
-    model <- do.call(bHIVE, args)
+    model <- do.call(.bHIVE_matrix, args)
     # compute metric
     mvalue <- .calc_metric(model, X, y, task, metric, dist_mat)
     

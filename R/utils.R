@@ -14,6 +14,11 @@ utils::globalVariables(c("PC1", "PC2", "Group", "Feature", "Prototype", "Layer")
 
 .validate_bHIVE_input <- function(X, 
                                   y = NULL) {
+  if (methods::is(X, "SummarizedExperiment")) {
+    stop("X is a SummarizedExperiment. Pass t(assay(X)) or reducedDim(X) ",
+         "here, or use bHIVE() or bHIVEParam(), which accept it directly.",
+         call. = FALSE)
+  }
   if (!is.matrix(X) && !is.data.frame(X)) {
     stop("Input X must be a matrix or data frame.")
   }
