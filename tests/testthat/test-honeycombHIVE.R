@@ -358,3 +358,65 @@ test_that("honeycombHIVE refineSteps=0 yields same result as refine=FALSE", {
 
   expect_equal(final_no_ref, final_steps0, tolerance=1e-14)
 })
+
+# ==== Classification hierarchy, refinement space, final-layer model ====
+
+test_that("classification keeps several prototypes per class past layer 1", {
+  # Collapsing by class label used to leave 3 prototypes per layer, and the
+  # layer-2 predictions lost their labels (all one class).
+  X <- iris[, 1:4]
+  y <- iris$Species
+  set.seed(1)
+  res <- honeycombHIVE(X, y, task = "classification", layers = 2,
+                       verbose = FALSE)
+  expect_gt(nrow(res[[1]]$prototypes), nlevels(y))
+  for (layer in res) {
+    expect_gt(mean(layer$predictions == y), 0.7)
+    expect_equal(nrow(layer$prototypes), max(layer$membership))
+  }
+})
+
+test_that("predictions are the majority label of each cluster", {
+  X <- iris[, 1:4]
+  y <- iris$Species
+  set.seed(2)
+  res <- honeycombHIVE(X, y, task = "classification", layers = 2,
+                       verbose = FALSE)
+  layer <- res[[2]]
+  for (k in unique(layer$membership)) {
+    idx <- which(layer$membership == k)
+    expect_equal(unique(layer$predictions[idx]), .majority_label(y[idx]))
+  }
+})
+
+test_that("only the final layer keeps the fitted model", {
+  set.seed(3)
+  res <- honeycombHIVE(iris[, 1:4], task = "clustering", layers = 3,
+                       nAntibodies = 15, maxIter = 5, verbose = FALSE)
+  expect_null(res[[1]]$model)
+  expect_null(res[[2]]$model)
+  expect_s3_class(res[[3]]$model, "AINet")
+})
+
+test_that("refinement runs in the model's scaled space", {
+  X <- iris[, 1:4]
+  set.seed(4)
+  res <- honeycombHIVE(X, iris$Species, task = "classification", layers = 2,
+                       maxIter = 5, refine = TRUE, refineSteps = 3,
+                       scale = "zscore", verbose = FALSE)
+  final <- res[[2]]
+  # Unscaled prototypes stay in the data range, and the stored model uses
+  # the refined antibodies.
+  rng <- range(as.matrix(X))
+  expect_true(all(final$antibodies_unscaled >= rng[1] - 1 &
+                    final$antibodies_unscaled <= rng[2] + 1))
+  expect_identical(final$model$result$antibodies, final$antibodies)
+})
+
+test_that("medoid prototypes keep the feature names", {
+  set.seed(5)
+  res <- honeycombHIVE(iris[, 1:4], task = "clustering", layers = 2,
+                       nAntibodies = 10, maxIter = 3,
+                       collapseMethod = "medoid", verbose = FALSE)
+  expect_identical(colnames(res[[2]]$antibodies), colnames(iris)[1:4])
+})

@@ -36,7 +36,15 @@ utils::globalVariables(c("PC1", "PC2", "Group", "Feature", "Prototype", "Layer")
   invisible(TRUE)
 }
 
-#Determines how to move a single prototype 'ab_vec' in feature space
+#' Gradient direction for one prototype and one sample
+#'
+#' Clustering always pulls the prototype toward the sample. Classification
+#' pulls when the sample shares the prototype's dominant label and, with
+#' push_away, pushes it away otherwise. The "mae" loss uses only the sign of
+#' that direction.
+#' @return Numeric vector of length(ab_vec).
+#' @keywords internal
+#' @noRd
 .update_prototype <- function(ab_vec,
                               x_i,
                               same_label = NA,
@@ -46,57 +54,16 @@ utils::globalVariables(c("PC1", "PC2", "Group", "Feature", "Prototype", "Layer")
                               push_away = TRUE) {
   task <- match.arg(task)
   loss <- match.arg(loss)
-
-  # must return a numeric vector of length = length(ab_vec)
-  d <- length(ab_vec)
-  zero_vec <- numeric(d)          # a zero vector for quick returns
-  pull_vec <- x_i - ab_vec        # pulling ab_vec toward x_i
-  push_vec <- -pull_vec           # pushing ab_vec away from x_i
-
-  # =================
-  # 1) CLUSTERING
-  # =================
-  if (task == "clustering") {
-    return(pull_vec)
+  pull <- x_i - ab_vec
+  if (task == "clustering") return(pull)
+  # No label to compare against, or a mismatch without push_away: no move.
+  if (is.na(same_label)) return(numeric(length(ab_vec)))
+  if (isTRUE(same_label)) {
+    dir <- pull
+  } else if (push_away) {
+    dir <- -pull
+  } else {
+    return(numeric(length(ab_vec)))
   }
-
-  # =================
-  # 2) CLASSIFICATION
-  # =================
-  if (task == "classification") {
-    # If no assigned label => no movement
-    if (is.na(same_label)) {
-      return(zero_vec)
-    }
-    is_same <- isTRUE(same_label)
-
-    # (A) If 'is_same' => we PULL
-    # (B) Else if push_away => we PUSH
-    # (C) else => zero
-    if (loss %in% c("categorical_crossentropy","binary_crossentropy","kullback_leibler","cosine")) {
-      if (is_same) {
-        return(pull_vec)
-      } else if (push_away) {
-        return(push_vec)
-      } else {
-        return(zero_vec)
-      }
-    }
-
-    else if (loss == "mae") {
-      # sign-based approach
-      if (is_same) {
-        return(sign(pull_vec))
-      } else if (push_away) {
-        return(sign(push_vec))
-      } else {
-        return(zero_vec)
-      }
-    }
-
-    return(zero_vec)
-  }
-
-  # If something unexpected
-  return(zero_vec)
+  if (loss == "mae") sign(dir) else dir
 }

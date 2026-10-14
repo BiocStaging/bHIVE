@@ -165,3 +165,32 @@ test_that("refineB: Optimizer variants for clustering", {
     expect_equal(dim(result), dim(A))
   }
 })
+
+test_that("refineB: numeric assignments index rows of A directly", {
+  # Assignments that first appear as 2, 1 used to be re-indexed by first
+  # appearance, so sample 1 (assigned to antibody 2) moved antibody 1.
+  X <- matrix(c(10, 10, 0, 0), ncol = 2, byrow = TRUE)
+  A <- matrix(c(0, 0, 9, 9), ncol = 2, byrow = TRUE)
+  set.seed(1)
+  out <- refineB(A, X, assignments = c(2, 1), task = "clustering",
+                 steps = 1, lr = 0.5, verbose = FALSE)
+  expect_equal(out[1, ], c(0, 0))     # antibody 1 sits on its sample
+  expect_equal(out[2, ], c(9.5, 9.5)) # antibody 2 pulled toward (10, 10)
+})
+
+test_that("refineB: character assignments can name rows of A", {
+  X <- matrix(c(10, 10, 0, 0), ncol = 2, byrow = TRUE)
+  A <- matrix(c(0, 0, 9, 9), ncol = 2, byrow = TRUE,
+              dimnames = list(c("a", "b"), NULL))
+  set.seed(1)
+  out <- refineB(A, X, assignments = c("b", "a"), task = "clustering",
+                 steps = 1, lr = 0.5, verbose = FALSE)
+  expect_equal(unname(out[2, ]), c(9.5, 9.5))
+})
+
+test_that("refineB: progress is reported with message()", {
+  X <- as.matrix(iris[1:10, 1:4])
+  A <- X[1:2, ]
+  expect_message(refineB(A, X, assignments = rep(1:2, 5), steps = 1,
+                         verbose = TRUE), "Refinement step 1/1")
+})
