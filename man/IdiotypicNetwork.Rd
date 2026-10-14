@@ -25,12 +25,16 @@ No existing AIS implementation uses idiotypic network dynamics for
 repertoire regulation.
 }
 \examples{
-# Create and run idiotypic regulation
-idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
-A <- matrix(rnorm(50), nrow = 10, ncol = 5)
+# Four antibodies with pairwise affinity 0.25 (inside the default
+# activation window) stimulate each other and survive. A fifth, far from
+# the rest, is under-stimulated and dies.
+a <- sqrt(log(4) / 2)
+A <- rbind(cbind(diag(4) * a, 0), c(0, 0, 0, 0, 10))
 rep <- ImmuneRepertoire$new(A)
-idi$regulate(rep, "gaussian", list(alpha = 0.5))
+idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
+idi$regulate(rep, "gaussian", list(alpha = 1))
 print(idi)
+rep$size()
 
 }
 \section{Public fields}{

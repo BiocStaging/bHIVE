@@ -6,13 +6,14 @@ test_that("bHIVE handles different affinity functions correctly", {
   data(iris)
   X <- as.matrix(iris[, 1:4])
   
-  affinity_funcs <- c("gaussian", "laplace", "polynomial", "cosine")
-  for (aff in affinity_funcs) {
+  natural <- c(gaussian = "euclidean", laplace = "manhattan",
+               polynomial = "euclidean", cosine = "cosine")
+  for (aff in names(natural)) {
     expect_no_error(
       res <- bHIVE(X = X, 
                    task = "clustering", 
                    affinityFunc = aff, 
-                   distFunc = "euclidean", 
+                   distFunc = natural[[aff]], 
                    nAntibodies = 10, 
                    maxIter = 5, 
                    verbose = FALSE)

@@ -114,9 +114,12 @@ test_that("AINet works with all initialization methods", {
 # ==== Affinity / distance variants ====
 
 test_that("AINet works with different affinity functions", {
-  for (af in c("gaussian", "laplace", "polynomial", "cosine")) {
-    model <- AINet$new(nAntibodies = 10, maxIter = 3,
-                       affinityFunc = af, verbose = FALSE)
+  # Each affinity paired with its natural distance (see the metric guard).
+  natural <- c(gaussian = "euclidean", laplace = "manhattan",
+                   polynomial = "euclidean", cosine = "cosine")
+  for (af in names(natural)) {
+    model <- AINet$new(nAntibodies = 10, maxIter = 3, affinityFunc = af,
+                       distFunc = natural[[af]], verbose = FALSE)
     model$fit(X, task = "clustering")
     expect_true(is.matrix(model$result$antibodies))
   }
@@ -614,4 +617,97 @@ test_that("targetK returns K clusters and predict() reproduces them", {
   expect_equal(length(unique(model$result$assignments)), 6L)
   expect_equal(nrow(model$result$antibodies), 6L)
   expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+})
+
+test_that("the metric guard aligns cosine and Euclidean-family geometries", {
+  expect_warning(m <- AINet$new(affinityFunc = "cosine",
+                                distFunc = "euclidean", verbose = FALSE),
+                 "inconsistent geometries")
+  expect_equal(m$config$distFunc, "cosine")
+  expect_warning(m <- AINet$new(affinityFunc = "laplace",
+                                distFunc = "cosine", verbose = FALSE),
+                 "overriding distFunc to 'manhattan'")
+  expect_equal(m$config$distFunc, "manhattan")
+  expect_no_warning(AINet$new(affinityFunc = "gaussian",
+                              distFunc = "manhattan", verbose = FALSE))
+})
+
+# ==== Paths otherwise exercised only by the local golden test ====
+
+test_that("robust and arcsinh scaling round-trip and predict consistently", {
+  for (sc in c("robust", "arcsinh")) {
+    set.seed(21)
+    m <- AINet$new(nAntibodies = 15, maxIter = 5, scale = sc, verbose = FALSE)
+    m$fit(X)
+    expect_equal(.bhive_invert_scaling(
+      .bhive_apply_scaling(X, m$config$scaling), m$config$scaling),
+      X, label = sc)
+    expect_equal(as.numeric(m$predict(X)), m$result$assignments, label = sc)
+  }
+  expect_error(.bhive_learn_scaling(X, "minmax"), "Unknown scaling method")
+})
+
+test_that("epsilonQuantile adapts suppression and falls back when tiny", {
+  set.seed(22)
+  m <- AINet$new(nAntibodies = 15, maxIter = 5, epsilonQuantile = 0.2,
+                 verbose = FALSE)
+  expect_no_error(m$fit(X))
+  priv <- m$.__enclos_env__$private
+  expect_equal(priv$.adaptive_epsilon(X[1:2, ], "euclidean", 0.5, 2,
+                                      matrix(0, 0, 0), fallback = 0.3), 0.3)
+  expect_equal(priv$.adaptive_epsilon(X[c(1, 1, 1), ], "euclidean", 0.5, 2,
+                                      matrix(0, 0, 0), fallback = 0.3), 0.3)
+  expect_error(AINet$new(epsilonQuantile = 2), "epsilonQuantile")
+})
+
+test_that("auto bandwidth only applies to distance kernels", {
+  priv <- AINet$new(verbose = FALSE)$.__enclos_env__$private
+  expect_equal(priv$.auto_bandwidth(X, "cosine"), 1)
+  expect_equal(priv$.auto_bandwidth(X[c(1, 1), ], "gaussian"), 1)
+  expect_gt(priv$.auto_bandwidth(X, "laplace"), 0)
+})
+
+test_that("Mahalanobis distance uses the supplied covariance", {
+  set.seed(23)
+  m <- AINet$new(nAntibodies = 15, maxIter = 4, distFunc = "mahalanobis",
+                 affinityParams = list(alpha = 1, Sigma = cov(X)),
+                 verbose = FALSE)
+  m$fit(X)
+  expect_equal(as.numeric(m$predict(X)), m$result$assignments)
+})
+
+test_that("the activation gate sets aside non-binding antibodies with their SHM state", {
+  set.seed(24)
+  m <- AINet$new(nAntibodies = 25, maxIter = 3, verbose = FALSE,
+                 shm = SHMEngine$new(method = "adaptive"),
+                 activation = ActivationGate$new(threshold1 = 0.5,
+                                                 threshold2 = 0.6))
+  expect_no_error(m$fit(X, iris$Species))
+  expect_identical(m$predict(X), m$result$assignments)
+})
+
+test_that("early stopping is reported with message()", {
+  set.seed(25)
+  m <- AINet$new(nAntibodies = 10, maxIter = 30, noImprovementLimit = 2,
+                 verbose = TRUE)
+  msgs <- capture_messages(m$fit(X))
+  expect_true(any(grepl("Early stopping", msgs)))
+  expect_lt(length(m$history), 30L)
+})
+
+test_that("targetK above the antibody count adds k-means++ seeds", {
+  set.seed(26)
+  m <- AINet$new(nAntibodies = 4, maxIter = 3, epsilon = 2, targetK = 8,
+                 verbose = FALSE)
+  m$fit(X)
+  expect_equal(length(unique(m$result$assignments)), 8L)
+})
+
+test_that("classification memory archives class labels", {
+  set.seed(27)
+  mem <- MemoryPool$new(archive_threshold = 0.001)
+  m <- AINet$new(nAntibodies = 20, maxIter = 3, memory = mem, verbose = FALSE)
+  m$fit(X, iris$Species)
+  expect_identical(m$repertoire$metadata$class_label,
+                   m$result$antibody_classes)
 })

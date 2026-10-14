@@ -57,14 +57,16 @@ test_that("honeycombHIVE handles different affinity functions", {
   data(iris)
   X <- as.matrix(iris[, 1:4])
   
-  affinity_funcs <- c("gaussian", "laplace", "polynomial", "cosine")
-  for (aff in affinity_funcs) {
+  natural <- c(gaussian = "euclidean", laplace = "manhattan",
+               polynomial = "euclidean", cosine = "cosine")
+  for (aff in names(natural)) {
     expect_no_error(
       res <- honeycombHIVE(X = X, 
                            task = "clustering", 
                            layers = 2, 
                            nAntibodies = 10, 
                            affinityFunc = aff, 
+                           distFunc = natural[[aff]], 
                            maxIter = 5,
                            verbose = FALSE)
     )
@@ -419,4 +421,64 @@ test_that("medoid prototypes keep the feature names", {
                        nAntibodies = 10, maxIter = 3,
                        collapseMethod = "medoid", verbose = FALSE)
   expect_identical(colnames(res[[2]]$antibodies), colnames(iris)[1:4])
+})
+
+# ==== Small clusters and collapse methods ====
+
+test_that("small clusters are merged, kept or dropped as requested", {
+  X <- iris[, 1:4]
+  fit <- function(action) {
+    set.seed(30)
+    honeycombHIVE(X, task = "clustering", layers = 1, nAntibodies = 30,
+                  maxIter = 5, minClusterSize = 8,
+                  smallClusterAction = action, verbose = FALSE)[[1]]
+  }
+  merged <- fit("merge")
+  kept   <- fit("keep")
+  dropped <- fit("drop")
+  # merge keeps every observation and only clusters of at least 8
+  expect_false(anyNA(merged$membership))
+  expect_true(all(table(merged$membership) >= 8))
+  # keep retains every cluster, including the small ones
+  expect_gt(nrow(kept$prototypes), nrow(merged$prototypes))
+  expect_false(anyNA(kept$membership))
+  # drop discards small clusters and their members
+  expect_true(anyNA(dropped$membership))
+  expect_equal(nrow(dropped$prototypes), nrow(merged$prototypes))
+})
+
+test_that("small-cluster handling is reported with message()", {
+  X <- iris[, 1:4]
+  for (action in c("merge", "keep", "drop")) {
+    set.seed(31)
+    msgs <- capture_messages(
+      honeycombHIVE(X, task = "clustering", layers = 1, nAntibodies = 30,
+                    maxIter = 3, minClusterSize = 8,
+                    smallClusterAction = action, verbose = TRUE))
+    expect_true(any(grepl("small cluster", msgs)), label = action)
+    expect_true(any(grepl("Layer 1 completed", msgs)), label = action)
+  }
+})
+
+test_that("median and mode collapse methods summarize each cluster", {
+  X <- round(iris[, 1:4])
+  for (cm in c("median", "mode")) {
+    set.seed(32)
+    res <- honeycombHIVE(X, task = "clustering", layers = 1,
+                         nAntibodies = 10, maxIter = 3, collapseMethod = cm,
+                         verbose = FALSE)[[1]]
+    k <- res$membership[1]
+    members <- X[res$membership == k, , drop = FALSE]
+    expected <- if (cm == "median") {
+      apply(members, 2, median)
+    } else {
+      apply(members, 2, function(v) as.numeric(names(which.max(table(v)))))
+    }
+    expect_equal(unname(res$prototypes[k, ]), unname(expected), label = cm)
+  }
+})
+
+test_that("honeycombHIVE rejects an unknown refinement loss", {
+  expect_error(honeycombHIVE(iris[, 1:4], refine = TRUE, refineLoss = "mse",
+                             verbose = FALSE), "Invalid refineLoss")
 })

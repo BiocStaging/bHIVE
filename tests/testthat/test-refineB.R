@@ -194,3 +194,28 @@ test_that("refineB: progress is reported with message()", {
   expect_message(refineB(A, X, assignments = rep(1:2, 5), steps = 1,
                          verbose = TRUE), "Refinement step 1/1")
 })
+
+test_that("refineB: accepts data frames, character y and label assignments", {
+  X <- iris[1:20, 1:4]
+  A <- as.matrix(X[c(1, 11), ])
+  labs <- rep(c("left", "right"), each = 10)  # not row names of A
+  set.seed(2)
+  msgs <- capture_messages(
+    out <- refineB(A, X, y = as.character(iris$Species[1:20]),
+                   assignments = labs, task = "classification",
+                   steps = 1, verbose = TRUE))
+  expect_equal(dim(out), dim(A))
+  expect_true(any(grepl("Refinement step", msgs)))
+  expect_error(refineB(A, X, assignments = 1:3), "Length of 'assignments'")
+  expect_error(refineB(A, matrix(letters[1:8], 2), assignments = 1:2),
+               "'X' must be numeric")
+})
+
+test_that("refineB: reports antibodies with no samples", {
+  X <- as.matrix(iris[1:10, 1:4])
+  A <- X[1:3, ]
+  msgs <- capture_messages(
+    refineB(A, X, y = iris$Species[1:10], assignments = rep(1, 10),
+            task = "classification", steps = 1, verbose = TRUE))
+  expect_true(any(grepl("2 of 3 prototypes have no assigned samples", msgs)))
+})

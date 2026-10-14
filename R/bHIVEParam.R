@@ -183,7 +183,8 @@ bHIVEParam <- function(nAntibodies = NULL, beta = NULL, epsilon = NULL,
   msg
 }
 
-setValidity("bHIVEParam", .bhive_param_validity)
+# Wrapped so the check is looked up at run time rather than captured at load.
+setValidity("bHIVEParam", function(object) .bhive_param_validity(object))
 
 #' @export
 #' @rdname bHIVEParam
