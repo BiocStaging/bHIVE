@@ -111,7 +111,6 @@ cdot
 chemokine
 chemokines
 clonotypes
-clusterCells
 coef
 cofactor
 combinatorial
@@ -203,7 +202,6 @@ roxygen
 runif
 runnable
 scRNA
-scran
 sds
 sgd
 stromal

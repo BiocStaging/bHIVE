@@ -104,11 +104,13 @@ Rcpp::List clonal_selection_iteration_cpp(
     for (arma::uword ki = 0; ki < k2; ++ki) {
       const arma::uword jj = top_idx(ki);
       const double f_j = aff_values(jj);
-      const int nClonesInt = std::min(
-        static_cast<int>(maxClones),
-        static_cast<int>(std::floor(beta * (f_j / max_aff)))
-      );
-      if (nClonesInt <= 0) continue;
+      // Cap in double before converting. maxClones defaults to Inf, and
+      // converting Inf to int is undefined: x86-64 yields INT_MIN, which
+      // silently disabled cloning there. !(x >= 1) also drops NaN.
+      const double nClones =
+        std::min(maxClones, std::floor(beta * (f_j / max_aff)));
+      if (!(nClones >= 1.0)) continue;
+      const int nClonesInt = static_cast<int>(nClones);
 
       for (int clone_id = 0; clone_id < nClonesInt; ++clone_id) {
         // Dispatch mutation by SHM method. mutationDecay and mutationMin

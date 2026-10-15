@@ -1005,7 +1005,8 @@ AINet <- R6::R6Class(
     "maxIter must be a positive integer" = is.numeric(maxIter) && maxIter >= 1,
     "k must be a positive integer" = is.numeric(k) && k >= 1,
     "mutationDecay must be in (0, 1]" = is.numeric(mutationDecay) && mutationDecay > 0 && mutationDecay <= 1,
-    "mutationMin must be non-negative" = is.numeric(mutationMin) && mutationMin >= 0
+    "mutationMin must be non-negative" = is.numeric(mutationMin) && mutationMin >= 0,
+    "maxClones must be non-negative" = is.numeric(maxClones) && length(maxClones) == 1L && !is.na(maxClones) && maxClones >= 0
   ))
   if (!is.null(args$targetK)) {
     stopifnot("targetK must be a positive integer" =

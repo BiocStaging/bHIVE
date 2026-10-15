@@ -65,8 +65,8 @@
 #' Bioconductor convention). For the latter, the cells are clustered or
 #' classified using an assay or, for a SingleCellExperiment, a
 #' \code{reducedDim()} embedding, and the labels are stored in
-#' \code{colData()}. To use bHIVE through \pkg{bluster} or
-#' \code{scran::clusterCells()}, see \code{\link{bHIVEParam}}.
+#' \code{colData()}. To use bHIVE through \pkg{bluster}, see
+#' \code{\link{bHIVEParam}}.
 #'
 #' @param X A numeric matrix or data frame of input features, with rows as
 #' observations and columns as features. Or a SummarizedExperiment or

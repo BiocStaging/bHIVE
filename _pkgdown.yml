@@ -57,7 +57,7 @@ reference:
 
   - title: "Bioconductor Integration"
     desc: >
-      Run bHIVE through `bluster::clusterRows()` and `scran::clusterCells()`.
+      Run bHIVE through `bluster::clusterRows()` and `bluster::clusterSweep()`.
       `bHIVE()` also accepts SummarizedExperiment and SingleCellExperiment
       objects directly.
     contents:

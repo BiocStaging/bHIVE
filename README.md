@@ -18,7 +18,7 @@ Performance-critical operations (affinity/distance matrices, clonal selection, n
 ### Key Features
 
 - **Two tasks** -- clustering and classification on matrices, `SummarizedExperiment` and `SingleCellExperiment` objects
-- **Bioconductor integration** -- labels stored in `colData()`, and `bHIVEParam()` runs bHIVE through `bluster::clusterRows()` and `scran::clusterCells()`
+- **Bioconductor integration** -- labels stored in `colData()`, and `bHIVEParam()` runs bHIVE through `bluster::clusterRows()` and `bluster::clusterSweep()`
 - **C++ backend** -- BLAS-optimized bulk affinity/distance computation
 - **Two APIs** -- functional (`bHIVE()`) for quick use and R6 (`AINet$new()`) for full module composition
 - **Multilayer architecture** -- `honeycombHIVE()` for hierarchical prototype refinement across layers
@@ -66,7 +66,7 @@ table(Predicted = res$assignments, Actual = iris$Species)
 
 ### Bioconductor objects
 
-`bHIVE()` clusters the cells (columns) of a `SingleCellExperiment` using an assay or a `reducedDim()` embedding, and stores the labels in `colData()`. `bHIVEParam()` plugs bHIVE into `bluster` and `scran`:
+`bHIVE()` clusters the cells (columns) of a `SingleCellExperiment` using an assay or a `reducedDim()` embedding, and stores the labels in `colData()`. `bHIVEParam()` plugs bHIVE into `bluster`:
 
 ```r
 library(SingleCellExperiment)
@@ -76,9 +76,9 @@ reducedDim(sce, "PCA") <- prcomp(X)$x[, 1:3]
 sce <- bHIVE(sce, use.dimred = "PCA", targetK = 3, verbose = FALSE)
 table(sce$bHIVE, iris$Species)
 
-colLabels(sce) <- scran::clusterCells(
-  sce, use.dimred = "PCA",
-  BLUSPARAM = bHIVEParam(targetK = 3, affinityParams = list(alpha = "auto"))
+colLabels(sce) <- bluster::clusterRows(
+  reducedDim(sce, "PCA"),
+  bHIVEParam(targetK = 3, affinityParams = list(alpha = "auto"))
 )
 ```
 

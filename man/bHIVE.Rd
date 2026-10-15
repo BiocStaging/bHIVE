@@ -191,8 +191,8 @@ or a \linkS4class{SummarizedExperiment} /
 Bioconductor convention). For the latter, the cells are clustered or
 classified using an assay or, for a SingleCellExperiment, a
 \code{reducedDim()} embedding, and the labels are stored in
-\code{colData()}. To use bHIVE through \pkg{bluster} or
-\code{scran::clusterCells()}, see \code{\link{bHIVEParam}}.
+\code{colData()}. To use bHIVE through \pkg{bluster}, see
+\code{\link{bHIVEParam}}.
 }
 \examples{
 # Example 1: Clustering with the Iris dataset

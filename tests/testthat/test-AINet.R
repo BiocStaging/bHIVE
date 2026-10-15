@@ -25,6 +25,8 @@ test_that("AINet validates numeric parameters", {
   expect_error(AINet$new(mutationDecay = 0), "mutationDecay")
   expect_error(AINet$new(mutationDecay = 1.5), "mutationDecay")
   expect_error(AINet$new(mutationMin = -1), "mutationMin")
+  expect_error(AINet$new(maxClones = -1), "maxClones")
+  expect_error(AINet$new(maxClones = NA), "maxClones")
 })
 
 test_that("AINet validates affinity and distance function names", {
@@ -695,6 +697,20 @@ test_that("early stopping is reported with message()", {
   expect_lt(length(m$history), 30L)
 })
 
+test_that("the default maxClones = Inf clones like any cap above beta", {
+  # Converting Inf to int is undefined in C++. On x86-64 it gave INT_MIN, so
+  # no antibody was ever cloned or mutated under the default.
+  fit <- function(maxClones) {
+    set.seed(28)
+    m <- AINet$new(nAntibodies = 15, maxIter = 3, maxClones = maxClones,
+                   verbose = FALSE)
+    m$fit(X)
+    list(cells = m$repertoire$as_matrix(), seed = .Random.seed)
+  }
+  expect_identical(fit(Inf), fit(1e6))
+  expect_false(identical(fit(Inf), fit(0)))
+})
+
 test_that("targetK above the antibody count adds k-means++ seeds", {
   set.seed(26)
   m <- AINet$new(nAntibodies = 4, maxIter = 3, epsilon = 2, targetK = 8,
@@ -726,9 +742,14 @@ imbalanced <- function() {
 }
 
 test_that("stratified seeding lets a rare class be predicted", {
+  # Any change to RNG call order or floating-point paths sends each seed down
+  # a different trajectory, so the thresholds must hold for any 30 seeds, not
+  # just these. Over 200 seeds, per-seed rare recall has mean 0.88 and sd 0.14
+  # with minPerClass = 5, and mean 0.72 with minPerClass = 0. A 30-seed mean
+  # sits 5 standard errors above 0.75.
   d <- imbalanced()
   rare_recall <- function(mpc) {
-    mean(vapply(1:10, function(s) {
+    mean(vapply(1:30, function(s) {
       set.seed(s)
       m <- AINet$new(nAntibodies = 60, k = 1, maxIter = 5, minPerClass = mpc,
                      verbose = FALSE)
@@ -737,7 +758,7 @@ test_that("stratified seeding lets a rare class be predicted", {
     }, numeric(1)))
   }
   stratified <- rare_recall(5)
-  expect_gt(stratified, 0.85)
+  expect_gt(stratified, 0.75)
   expect_gt(stratified, rare_recall(0))
 })
 

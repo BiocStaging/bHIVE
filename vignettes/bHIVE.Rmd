@@ -55,7 +55,7 @@ What this gives an analyst:
 bHIVE works with Bioconductor data structures. `bHIVE()` accepts a
 `SummarizedExperiment` or `SingleCellExperiment` and stores its labels in
 `colData()`. `bHIVEParam()` plugs bHIVE into `r Biocpkg("bluster")`, so it
-also runs through `bluster::clusterRows()` and `scran::clusterCells()`.
+also runs through `bluster::clusterRows()` and `bluster::clusterSweep()`.
 
 bHIVE does not replace graph-based clustering or `r Biocpkg("FlowSOM")`.
 The comparison below shows that a shared-nearest-neighbor graph recovers
@@ -182,7 +182,7 @@ X <- t(assay(sce, "exprs"))
 visualizeHIVE(res, X = X, title = "bHIVE prototypes on the PCA of the cells")
 ```
 
-# bHIVE through bluster and scran
+# bHIVE through bluster
 
 `bHIVEParam()` describes a bHIVE run for `r Biocpkg("bluster")`. It works
 anywhere a `BlusterParam` does.
@@ -197,12 +197,11 @@ clusters <- clusterRows(X, param)
 table(clusters)
 ```
 
-`scran::clusterCells()` passes a `SingleCellExperiment` straight to bluster.
+The rows of `X` are the cells of `sce`, so the labels go straight into
+`colData()`.
 
-```{r scran}
-set.seed(42)
-colLabels(sce) <- scran::clusterCells(sce, assay.type = "exprs",
-                                      BLUSPARAM = param)
+```{r collabels}
+colLabels(sce) <- clusters
 nlevels(colLabels(sce))
 ```
 

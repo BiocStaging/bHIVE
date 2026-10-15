@@ -67,8 +67,8 @@ clusters.}
 }
 \description{
 Run \code{\link{bHIVE}} clustering through \code{\link[bluster]{clusterRows}},
-the \pkg{bluster} interface that \code{scran::clusterCells()} and
-\code{bluster::clusterSweep()} build on. This makes bHIVE a drop-in
+the \pkg{bluster} interface that \code{bluster::clusterSweep()} builds
+on. This makes bHIVE a drop-in
 alternative to the k-means, SOM and graph-based clustering that
 \pkg{bluster} already wraps.
 }
@@ -99,15 +99,12 @@ out$objects$bHIVE$model$predict(X[1:5, ])
 sweep <- clusterSweep(X, bHIVEParam(maxIter = 5), nAntibodies = c(10, 30))
 sweep$parameters
 
-# Through scran on a SingleCellExperiment
-if (requireNamespace("scran", quietly = TRUE)) {
-    library(SingleCellExperiment)
-    sce <- SingleCellExperiment(assays = list(logcounts = t(X)))
-    reducedDim(sce, "PCA") <- prcomp(X)$x[, 1:3]
-    colLabels(sce) <- scran::clusterCells(sce, use.dimred = "PCA",
-                                          BLUSPARAM = p)
-    table(colLabels(sce), iris$Species)
-}
+# Cluster a SingleCellExperiment embedding and store the labels
+library(SingleCellExperiment)
+sce <- SingleCellExperiment(assays = list(logcounts = t(X)))
+reducedDim(sce, "PCA") <- prcomp(X)$x[, 1:3]
+colLabels(sce) <- clusterRows(reducedDim(sce, "PCA"), p)
+table(colLabels(sce), iris$Species)
 
 }
 \seealso{

@@ -10,10 +10,15 @@ Changes in response to the first round of Bioconductor review.
   the fitted model, in `metadata()[[name]]`. For classification, `y` can name
   a `colData()` column.
 * New `bHIVEParam()`, a `BlusterParam` subclass. bHIVE now runs through
-  `bluster::clusterRows()`, `bluster::clusterSweep()` and
-  `scran::clusterCells()`.
+  `bluster::clusterRows()` and `bluster::clusterSweep()`.
 
 ## Bug fixes
+* With the default `maxClones = Inf`, clonal selection never cloned or
+  mutated an antibody on x86-64 machines (Linux, Windows, Intel Macs).
+  Converting `Inf` to an integer is undefined in C++, and x86-64 returned the
+  most negative integer. Apple Silicon returned the largest one, so results
+  there do not change. The clone count is now capped before the conversion,
+  and `maxClones` must be a non-negative number.
 * The caret wrappers `bHIVEmodel` and `honeycombHIVEmodel` predicted every
   observation as the first class. They now predict with the fitted model.
   `honeycombHIVEmodel` also failed in every caret fold because tuning grids
@@ -76,7 +81,7 @@ Changes in response to the first round of Bioconductor review.
   `SingleCellExperiment`.
 * `umap` and `Rtsne` move to Suggests and are needed only for those
   `visualizeHIVE()` reductions. `viridis` is no longer used.
-* Suggests gain `FlowSOM`, `HDCytoData` and `scran`, and drop `devtools` and
+* Suggests gain `FlowSOM` and `HDCytoData`, and drop `devtools` and
   `pkgdown`.
 
 # bHIVE 0.99.6

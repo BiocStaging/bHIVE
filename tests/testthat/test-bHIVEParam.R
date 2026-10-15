@@ -80,18 +80,14 @@ test_that("bHIVEParam validates its arguments", {
   expect_error(methods::new("bHIVEParam", extra = list(TRUE)), "uniquely named")
 })
 
-test_that("scran::clusterCells uses bHIVEParam on a SingleCellExperiment", {
-  skip_if_not_installed("scran")
+test_that("clusterRows labels a SingleCellExperiment from its reducedDim", {
   sce <- SingleCellExperiment::SingleCellExperiment(
     assays = list(logcounts = t(X)))
   SingleCellExperiment::reducedDim(sce, "PCA") <- prcomp(X)$x[, 1:3]
   p <- bHIVEParam(targetK = 3, maxIter = 5)
   set.seed(5)
-  by_pca <- scran::clusterCells(sce, use.dimred = "PCA", BLUSPARAM = p)
-  expect_length(by_pca, ncol(sce))
-  expect_equal(nlevels(by_pca), 3L)
-  set.seed(6)
-  by_assay <- scran::clusterCells(sce, assay.type = "logcounts",
-                                  BLUSPARAM = p, full = TRUE)
-  expect_s3_class(by_assay$objects$bHIVE$model, "AINet")
+  SingleCellExperiment::colLabels(sce) <- bluster::clusterRows(
+    SingleCellExperiment::reducedDim(sce, "PCA"), p)
+  expect_length(SingleCellExperiment::colLabels(sce), ncol(sce))
+  expect_equal(nlevels(SingleCellExperiment::colLabels(sce)), 3L)
 })

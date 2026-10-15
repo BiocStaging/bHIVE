@@ -12,12 +12,12 @@ Description: bHIVE implements an artificial immune network (AI-Net) for
     suppression, and the learned prototypes summarize cell populations in the
     original marker units. The same fitted model clusters a dataset and labels
     new cells. bHIVE accepts SummarizedExperiment and SingleCellExperiment
-    objects and integrates with bluster through bHIVEParam, so it also runs
-    through scran::clusterCells(). A C++ backend computes affinities,
-    mutations and suppression, and optional R6 modules add mechanisms such as
-    germinal center selection, microenvironment-dependent mutation and isotype
-    switching. The package also provides multilayer clustering, grid search
-    and caret model wrappers.
+    objects and integrates with bluster through bHIVEParam. A C++ backend
+    computes affinities, mutations and suppression, and optional R6 modules
+    add mechanisms such as germinal center selection,
+    microenvironment-dependent mutation and isotype switching. The package
+    also provides multilayer clustering, grid search and caret model
+    wrappers.
 License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.3
@@ -49,7 +49,6 @@ Suggests:
     knitr,
     rmarkdown,
     Rtsne,
-    scran,
     spelling,
     testthat (>= 3.0.0),
     umap
