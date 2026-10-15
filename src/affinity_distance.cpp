@@ -278,7 +278,12 @@ arma::mat distance_matrix_cpp(const arma::mat& X, const arma::mat& A,
 
 arma::mat pairwise_distance_cpp(const arma::mat& A, DistanceType type,
                                 double p, const arma::mat& Sigma_inv) {
-  return distance_matrix_cpp(A, A, type, p, Sigma_inv);
+  arma::mat D = distance_matrix_cpp(A, A, type, p, Sigma_inv);
+  // Every point is at distance 0 from itself. The BLAS identity
+  // ||x||^2 + ||x||^2 - 2 x.x (and the cosine epsilon) can leave a ~1e-8
+  // residue on the diagonal, so set it exactly.
+  D.diag().zeros();
+  return D;
 }
 
 

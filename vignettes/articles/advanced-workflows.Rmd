@@ -11,10 +11,9 @@ output:
 ---
 
 ```{r, echo=FALSE, results="hide", message=FALSE}
-knitr::opts_chunk$set(error=FALSE, message=FALSE, warning=FALSE, tidy = FALSE)
+knitr::opts_chunk$set(error=FALSE, message=FALSE, tidy = FALSE)
 library(bHIVE)
 library(ggplot2)
-library(viridis)
 ```
 
 # Introduction
@@ -62,7 +61,7 @@ ggplot(tuning$results, aes(x = nAntibodies, y = metric_value,
   labs(title = "Clustering: Silhouette Score",
        x = "Number of Antibodies", y = "Silhouette",
        color = "Beta", shape = "Epsilon") +
-  scale_color_viridis(discrete = TRUE) +
+  scale_color_viridis_d() +
   theme_minimal()
 ```
 
@@ -262,7 +261,7 @@ ggplot() +
                    xend = PC1_after, yend = PC2_after),
                arrow = arrow(length = unit(0.2, "cm"), type = "closed"),
                color = "black", linewidth = 0.5) +
-  scale_color_viridis(discrete = TRUE) +
+  scale_color_viridis_d() +
   labs(title = "Prototype Movement by Optimizer",
        subtitle = "Purple = before, Yellow = after refinement",
        x = "PC1", y = "PC2") +
@@ -313,7 +312,7 @@ model <- train(
 
 ggplot(model) +
   labs(title = "caret Cross-Validation Results") +
-  scale_color_viridis(discrete = TRUE) +
+  scale_color_viridis_d() +
   theme_minimal()
 ```
 
@@ -329,7 +328,7 @@ table(Predicted = preds, Actual = y_test)
 The multilayer caret model adds layer count and refinement parameters to
 the tuning grid:
 
-```{r caret-honeycomb, eval=FALSE}
+```{r caret-honeycomb}
 model_hc <- train(
   x = X_train, y = y_train,
   method = honeycombHIVEmodel,
@@ -345,6 +344,7 @@ model_hc <- train(
   ),
   verbose = FALSE
 )
+model_hc$results[, c("nAntibodies", "layers", "Accuracy", "Kappa")]
 ```
 
 # Visualization with visualizeHIVE

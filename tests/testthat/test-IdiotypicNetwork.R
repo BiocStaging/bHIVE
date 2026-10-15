@@ -28,62 +28,69 @@ test_that("IdiotypicNetwork validates parameters", {
 
 # ==== Regulation ====
 
-test_that("IdiotypicNetwork regulate runs on a repertoire", {
-  A <- matrix(rnorm(50), nrow = 10, ncol = 5)
-  rep <- ImmuneRepertoire$new(A)
-  idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
-  suppressWarnings(idi$regulate(rep, "gaussian", list(alpha = 0.5)))
+# A deterministic repertoire with known dynamics under the default window
+# [theta_low, theta_high] = [0.01, 0.5] and gaussian alpha = 1. Antibodies
+# 1-4 sit on a regular simplex with pairwise affinity exp(-2a^2) = 0.25, in
+# the middle of the window, so they stimulate each other and survive.
+# Antibody 5 is far from all of them (affinity ~0, below theta_low), so it
+# is under-stimulated and dies. Random fixtures put almost every pairwise
+# affinity outside the window, so the module removed every antibody.
+idiotypic_fixture <- function() {
+  a <- sqrt(log(4) / 2)
+  rbind(cbind(diag(4) * a, 0), c(0, 0, 0, 0, 10))
+}
 
-  expect_true(!is.null(idi$last_dynamics))
-  expect_true(rep$size() <= 10)  # some may be removed
-  expect_true(rep$size() > 0 || !is.null(idi$last_dynamics))
+test_that("IdiotypicNetwork keeps the stimulated cluster and culls the isolate", {
+  rep <- ImmuneRepertoire$new(idiotypic_fixture())
+  idi <- IdiotypicNetwork$new()
+  expect_no_warning(idi$regulate(rep, "gaussian"))
+  expect_equal(which(idi$last_dynamics$keep), 1:4)
+  pop <- as.numeric(idi$get_population())
+  expect_true(all(pop[1:4] > idi$survival_threshold))
+  expect_lt(pop[5], idi$survival_threshold)
+  expect_equal(rep$size(), 4L)
 })
 
-test_that("IdiotypicNetwork regulate modifies repertoire in place", {
-  A <- matrix(rnorm(50), nrow = 10, ncol = 5)
-  rep <- ImmuneRepertoire$new(A)
-  initial_size <- rep$size()
-  idi <- IdiotypicNetwork$new(theta_low = 0.001, theta_high = 0.99,
-                               survival_threshold = 0.1)
-  suppressWarnings(idi$regulate(rep, "gaussian", list(alpha = 1)))
-  # Regulation happened; metadata should be in sync
-
+test_that("IdiotypicNetwork regulate keeps metadata in sync", {
+  rep <- ImmuneRepertoire$new(idiotypic_fixture())
+  idi <- IdiotypicNetwork$new()
+  expect_no_warning(idi$regulate(rep, "gaussian", list(alpha = 1)))
   expect_equal(rep$size(), nrow(rep$metadata))
+  expect_equal(rep$as_matrix(), idiotypic_fixture()[1:4, ])
 })
 
-test_that("IdiotypicNetwork get_network returns matrix after regulation", {
-  A <- matrix(rnorm(30), nrow = 6, ncol = 5)
-  rep <- ImmuneRepertoire$new(A)
+test_that("IdiotypicNetwork get_network returns the Ab-Ab affinities", {
+  rep <- ImmuneRepertoire$new(idiotypic_fixture())
   idi <- IdiotypicNetwork$new()
   expect_null(idi$get_network())
-
-  suppressWarnings(idi$regulate(rep, "gaussian"))
+  expect_no_warning(idi$regulate(rep, "gaussian"))
   net <- idi$get_network()
   expect_true(is.matrix(net))
-  expect_equal(nrow(net), 6)
-  expect_equal(ncol(net), 6)
+  expect_equal(dim(net), c(5L, 5L))
+  expect_equal(net[1, 2], 0.25)
+  expect_equal(unname(diag(net)), rep(0, 5))
 })
 
-test_that("IdiotypicNetwork get_population returns vector after regulation", {
-  A <- matrix(rnorm(30), nrow = 6, ncol = 5)
-  rep <- ImmuneRepertoire$new(A)
+test_that("IdiotypicNetwork get_population returns one level per antibody", {
+  rep <- ImmuneRepertoire$new(idiotypic_fixture())
   idi <- IdiotypicNetwork$new()
   expect_null(idi$get_population())
-
-  suppressWarnings(idi$regulate(rep, "gaussian"))
+  expect_no_warning(idi$regulate(rep, "gaussian"))
   pop <- idi$get_population()
   expect_true(is.numeric(pop))
-  expect_equal(length(pop), 6)
+  expect_length(pop, 5)
 })
 
 test_that("IdiotypicNetwork warns when all antibodies removed", {
-  # Create very similar antibodies with strict thresholds
+  # Deliberate wipe-out: a survival threshold no antibody can reach. The
+  # repertoire is left unchanged rather than emptied.
   A <- matrix(0.5, nrow = 5, ncol = 3) + matrix(rnorm(15, sd = 0.01), 5, 3)
   rep <- ImmuneRepertoire$new(A)
   idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5,
                                survival_threshold = 10)
   expect_warning(idi$regulate(rep, "gaussian", list(alpha = 1)),
                  "removed all")
+  expect_equal(rep$size(), 5L)
 })
 
 # ==== Print ====
@@ -94,9 +101,8 @@ test_that("IdiotypicNetwork print works before regulation", {
 })
 
 test_that("IdiotypicNetwork print works after regulation", {
-  A <- matrix(rnorm(30), nrow = 6, ncol = 5)
-  rep <- ImmuneRepertoire$new(A)
+  rep <- ImmuneRepertoire$new(idiotypic_fixture())
   idi <- IdiotypicNetwork$new()
-  suppressWarnings(idi$regulate(rep, "gaussian"))
-  expect_output(print(idi), "survived")
+  expect_no_warning(idi$regulate(rep, "gaussian"))
+  expect_output(print(idi), "4/5 antibodies survived")
 })

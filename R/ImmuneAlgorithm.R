@@ -10,6 +10,10 @@
 #' algo <- ImmuneAlgorithm$new()
 #' print(algo)
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{ImmuneAlgorithm$new()}
+#'   returns an \code{ImmuneAlgorithm} object. It is an abstract base class: use
+#'   \code{\link{AINet}} for a fitted model.
+#'
 #' @importFrom R6 R6Class
 #' @export
 ImmuneAlgorithm <- R6::R6Class(
@@ -73,9 +77,14 @@ ImmuneAlgorithm <- R6::R6Class(
         newdata <- .bhive_apply_scaling(newdata, cfg$scaling)
       }
 
-      alpha <- cfg$affinityParams$alpha %||% 1
-      c_p   <- cfg$affinityParams$c %||% 1
-      p_p   <- cfg$affinityParams$p %||% 2
+      # Use the kernel the fit actually read out with (resolved alpha = "auto"
+      # bandwidth, ClassSwitcher-modulated alpha, and the metric that
+      # produced the training labels), so predict() on the training data
+      # reproduces the training assignments.
+      kern  <- cfg$kernel
+      alpha <- kern$alpha %||% cfg$affinityParams$alpha %||% 1
+      c_p   <- kern$c %||% cfg$affinityParams$c %||% 1
+      p_p   <- kern$p %||% cfg$affinityParams$p %||% 2
       Sigma_inv <- if (!is.null(cfg$affinityParams$Sigma)) {
         solve(cfg$affinityParams$Sigma)
       } else {
@@ -85,7 +94,7 @@ ImmuneAlgorithm <- R6::R6Class(
       fa <- final_assignment_cpp(
         newdata, A,
         cfg$affinityFunc %||% "gaussian",
-        cfg$distFunc %||% "euclidean",
+        kern$assignDist %||% cfg$distFunc %||% "euclidean",
         switch(task, clustering = 0L, classification = 1L),
         alpha, c_p, p_p, Sigma_inv
       )
@@ -98,21 +107,20 @@ ImmuneAlgorithm <- R6::R6Class(
       }
     },
 
-    #' @description Print summary of the algorithm.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat(sprintf("<%s>\n", class(self)[1]))
+    #' @return A character vector.
+    format = function(...) {
+      out <- sprintf("<%s>", class(self)[1])
       if (!is.null(self$repertoire)) {
-        cat(sprintf("  Repertoire: %d antibodies x %d features\n",
-                    self$repertoire$size(), self$repertoire$n_features()))
+        out <- c(out, sprintf("  Repertoire: %d antibodies x %d features",
+                              self$repertoire$size(),
+                              self$repertoire$n_features()))
       }
-      if (!is.null(self$result)) {
-        cat(sprintf("  Task: %s\n", self$result$task))
-        cat(sprintf("  Iterations: %d\n", length(self$history)))
-      } else {
-        cat("  (not yet fitted)\n")
-      }
-      invisible(self)
+      if (is.null(self$result)) return(c(out, "  (not yet fitted)"))
+      c(out, sprintf("  Task: %s", self$result$task),
+        sprintf("  Iterations: %d", length(self$history)))
     },
 
     #' @description Get a summary of the fitting history.

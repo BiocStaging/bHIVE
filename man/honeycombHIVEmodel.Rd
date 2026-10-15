@@ -3,78 +3,66 @@
 \docType{data}
 \name{honeycombHIVEmodel}
 \alias{honeycombHIVEmodel}
-\title{Mulilayered honeycombHIVE for caret}
+\title{Multilayered honeycombHIVE classification model for caret}
 \format{
-An object of class \code{list} of length 8.
+A list with the components \pkg{caret} expects of a custom model.
 }
 \usage{
 honeycombHIVEmodel
 }
 \value{
-A \code{caret} model definition list. Pass it to
-  \code{\link[caret]{train}} for model training and evaluation.
+A list defining a custom \pkg{caret} model, for use as
+  \code{caret::train(method = honeycombHIVEmodel)}.
 }
 \description{
-A \code{caret} wrapper for the \code{\link{honeycombHIVE}} function,
-enabling seamless integration with the \code{caret} package for
-hyperparameter tuning, cross-validation, and performance evaluation.
+A custom model definition that lets \code{caret::train()} tune, resample
+and evaluate \code{\link{honeycombHIVE}} classifiers with gradient-based
+refinement.
+}
+\details{
+Training runs \code{honeycombHIVE(refine = TRUE)} with the tuned
+parameters. Further arguments given to \code{caret::train()} are passed on
+to \code{honeycombHIVE()}. Progress output is off unless
+\code{verbose = TRUE} is passed. Prediction uses the fitted
+\code{\link{AINet}} model of the final layer. caret requires column names
+on \code{x}. Class probabilities are not implemented (\code{prob = NULL}).
 }
 \section{Parameters}{
 
   \itemize{
-    \item \code{nAntibodies}: Number of initial antibodies in the network.
+    \item \code{nAntibodies}: Number of initial antibodies per layer.
     \item \code{beta}: Clone multiplier controlling the number of clones per
           antibody.
     \item \code{epsilon}: Threshold for network suppression to remove
           redundant antibodies.
-    \item \code{layers}: Number of hierarchical layers for iterative
-          refinement.
+    \item \code{layers}: Number of hierarchical layers.
     \item \code{refineOptimizer}: Optimizer for gradient-based refinement
-          (e.g. "sgd", "momentum", "adagrad", "adam", "rmsprop").
+          ("sgd", "momentum", "adagrad", "adam" or "rmsprop").
     \item \code{refineSteps}: Number of gradient update steps in refinement.
     \item \code{refineLR}: Learning rate for refinement.
   }
 }
 
-\section{Supported Tasks}{
-
-  \itemize{
-    \item \code{"Classification"}: Assigns class labels to input observations.
-    \item \code{"Clustering"}: Groups data points based on similarity
-          (though typically \code{caret} is used for supervised tasks).
-  }
-}
-
 \examples{
-\dontrun{
-  library(caret)
-  # Example: Classification with Iris
-  data(iris)
-  X <- as.matrix(iris[, 1:4])
-  y <- iris$Species
-
-  train_control <- trainControl(method = "cv", number = 5)
-  set.seed(42)
-  model <- train(
-    x = X,
-    y = y,
-    method = honeycombHIVEmodel,
-    trControl = train_control,
-    tuneGrid = expand.grid(
-      nAntibodies = c(10, 20),
-      beta = c(3, 5),
-      epsilon = c(0.01, 0.05),
-      layers = c(1, 2),
-      refineOptimizer = "adam",
-      refineSteps = 5,
-      refineLR = 0.01
+if (requireNamespace("caret", quietly = TRUE)) {
+    X <- as.matrix(iris[, 1:4])
+    y <- iris$Species
+    set.seed(42)
+    fit <- caret::train(
+        x = X, y = y, method = honeycombHIVEmodel,
+        trControl = caret::trainControl(method = "cv", number = 3),
+        tuneGrid = data.frame(nAntibodies = 30, beta = 5, epsilon = 0.05,
+                              layers = 2, refineOptimizer = "adam",
+                              refineSteps = 3, refineLR = 0.01),
+        maxIter = 10
     )
-  )
-  print(model)
+    fit
+    table(Predicted = predict(fit, X), Actual = y)
 }
 
 }
 \seealso{
-\code{\link[caret]{train}}, \code{\link[caret]{trainControl}}
+\code{\link{honeycombHIVE}}, \code{\link{bHIVEmodel}},
+  \code{\link[caret]{train}}
 }
 \keyword{datasets}

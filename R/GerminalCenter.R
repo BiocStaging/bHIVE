@@ -28,6 +28,9 @@
 #' @param selectionPressure Numeric [0,1]. Stringency of selection.
 #' @param rounds Integer. Number of competition rounds.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{GerminalCenter$new()}
+#'   returns a \code{GerminalCenter} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 GerminalCenter <- R6::R6Class(
@@ -110,14 +113,15 @@ GerminalCenter <- R6::R6Class(
       invisible(current)
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat("<GerminalCenter>\n")
-      cat(sprintf("  nTfh: %d\n", self$nTfh))
-      cat(sprintf("  Selection pressure: %.2f\n", self$selectionPressure))
-      cat(sprintf("  Rounds: %d\n", self$rounds))
-      invisible(self)
+    #' @return A character vector.
+    format = function(...) {
+      c("<GerminalCenter>",
+        sprintf("  nTfh: %d", self$nTfh),
+        sprintf("  Selection pressure: %.2f", self$selectionPressure),
+        sprintf("  Rounds: %d", self$rounds))
     }
   ),
 

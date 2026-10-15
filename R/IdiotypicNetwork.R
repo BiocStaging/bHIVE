@@ -19,13 +19,31 @@
 #' No existing AIS implementation uses idiotypic network dynamics for
 #' repertoire regulation.
 #'
+#' @section Experimental:
+#' The activation rule is applied to each antibody pair and the responses are
+#' summed: every neighbor whose affinity falls outside
+#' \code{[theta_low, theta_high]} counts as one unit of suppression. In a
+#' small, tight repertoire this culls crowded and isolated antibodies as
+#' intended (see the example). In a large or spread-out repertoire most pairs
+#' are far apart, their affinity is near zero, and every antibody is
+#' suppressed. \code{regulate()} then warns and leaves the repertoire
+#' unchanged, and \code{\link{AINet}} keeps the top 10\% by population and
+#' reports it with a message. Treat the module as experimental and check that
+#' antibodies survive on your data. A field-based form, in which the
+#' activation acts on the total stimulation each antibody receives, is
+#' planned.
+#'
 #' @examples
-#' # Create and run idiotypic regulation
-#' idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
-#' A <- matrix(rnorm(50), nrow = 10, ncol = 5)
+#' # Four antibodies with pairwise affinity 0.25 (inside the default
+#' # activation window) stimulate each other and survive. A fifth, far from
+#' # the rest, is under-stimulated and dies.
+#' a <- sqrt(log(4) / 2)
+#' A <- rbind(cbind(diag(4) * a, 0), c(0, 0, 0, 0, 10))
 #' rep <- ImmuneRepertoire$new(A)
-#' idi$regulate(rep, "gaussian", list(alpha = 0.5))
+#' idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
+#' idi$regulate(rep, "gaussian", list(alpha = 1))
 #' print(idi)
+#' rep$size()
 #'
 #' @param theta_low Lower activation threshold.
 #' @param theta_high Upper activation threshold.
@@ -34,6 +52,9 @@
 #' @param dt Euler integration time step.
 #' @param timeSteps Number of dynamics simulation steps.
 #' @param survival_threshold Minimum population to survive.
+#'
+#' @return An \code{\link[R6]{R6Class}} generator.
+#'   \code{IdiotypicNetwork$new()} returns an \code{IdiotypicNetwork} object.
 #'
 #' @importFrom R6 R6Class
 #' @export
@@ -151,23 +172,25 @@ IdiotypicNetwork <- R6::R6Class(
       self$last_dynamics$population
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat("<IdiotypicNetwork>\n")
-      cat(sprintf("  Activation window: [%.3f, %.3f]\n",
-                  self$theta_low, self$theta_high))
-      cat(sprintf("  Dynamics: %d steps (dt=%.3f)\n",
-                  self$timeSteps, self$dt))
-      cat(sprintf("  Source: %.3f  Decay: %.3f  Survival: %.3f\n",
-                  self$source_rate, self$decay_rate, self$survival_threshold))
+    #' @return A character vector.
+    format = function(...) {
+      out <- c("<IdiotypicNetwork>",
+               sprintf("  Activation window: [%.3f, %.3f]",
+                       self$theta_low, self$theta_high),
+               sprintf("  Dynamics: %d steps (dt=%.3f)",
+                       self$timeSteps, self$dt),
+               sprintf("  Source: %.3f  Decay: %.3f  Survival: %.3f",
+                       self$source_rate, self$decay_rate,
+                       self$survival_threshold))
       if (!is.null(self$last_dynamics)) {
-        pop <- self$last_dynamics$population
-        kept <- sum(self$last_dynamics$keep)
-        cat(sprintf("  Last run: %d/%d antibodies survived\n",
-                    kept, length(pop)))
+        out <- c(out, sprintf("  Last run: %d/%d antibodies survived",
+                              sum(self$last_dynamics$keep),
+                              length(self$last_dynamics$population)))
       }
-      invisible(self)
+      out
     }
   )
 )

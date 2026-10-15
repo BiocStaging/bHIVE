@@ -19,6 +19,9 @@
 #' @param max_memory Integer. Maximum memory cells.
 #' @param recall_threshold Numeric. Minimum affinity to recall a memory.
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{MemoryPool$new()}
+#'   returns a \code{MemoryPool} object.
+#'
 #' @importFrom R6 R6Class
 #' @export
 MemoryPool <- R6::R6Class(
@@ -135,13 +138,14 @@ MemoryPool <- R6::R6Class(
       if (is.null(self$memory_cells)) 0L else nrow(self$memory_cells)
     },
 
-    #' @description Print summary.
+    #' @description Format a short summary, one element per line. Used by
+    #'   \code{print()}.
     #' @param ... Not used.
-    print = function(...) {
-      cat(sprintf("<MemoryPool> %d cells (max %d)\n", self$size(), self$max_memory))
-      cat(sprintf("  Archive threshold: %.3f\n", self$archive_threshold))
-      cat(sprintf("  Recall threshold:  %.3f\n", self$recall_threshold))
-      invisible(self)
+    #' @return A character vector.
+    format = function(...) {
+      c(sprintf("<MemoryPool> %d cells (max %d)", self$size(), self$max_memory),
+        sprintf("  Archive threshold: %.3f", self$archive_threshold),
+        sprintf("  Recall threshold:  %.3f", self$recall_threshold))
     }
   )
 )

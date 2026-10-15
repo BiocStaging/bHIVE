@@ -3,6 +3,10 @@
 \name{ActivationGate}
 \alias{ActivationGate}
 \title{ActivationGate}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{ActivationGate$new()}
+  returns an \code{ActivationGate} object.
+}
 \description{
 Two-signal activation gate implementing the immunological
 principle that immune cell activation requires both antigen-specific
@@ -50,7 +54,7 @@ sum(activated)  # number of activated interactions
 \itemize{
 \item \href{#method-ActivationGate-new}{\code{ActivationGate$new()}}
 \item \href{#method-ActivationGate-evaluate}{\code{ActivationGate$evaluate()}}
-\item \href{#method-ActivationGate-print}{\code{ActivationGate$print()}}
+\item \href{#method-ActivationGate-format}{\code{ActivationGate$format()}}
 \item \href{#method-ActivationGate-clone}{\code{ActivationGate$clone()}}
 }
 }
@@ -111,12 +115,13 @@ Logical matrix (n x m) where TRUE means the interaction is activated.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-ActivationGate-print"></a>}}
-\if{latex}{\out{\hypertarget{method-ActivationGate-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-ActivationGate-format"></a>}}
+\if{latex}{\out{\hypertarget{method-ActivationGate-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ActivationGate$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ActivationGate$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -125,6 +130,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

@@ -3,6 +3,10 @@
 \name{SHMEngine}
 \alias{SHMEngine}
 \title{SHMEngine}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{SHMEngine$new()}
+  returns an \code{SHMEngine} object.
+}
 \description{
 Somatic Hypermutation Engine implementing five biologically-
 inspired mutation strategies for the bHIVE artificial immune system.
@@ -49,7 +53,7 @@ print(shm_adaptive)
 \item \href{#method-SHMEngine-new}{\code{SHMEngine$new()}}
 \item \href{#method-SHMEngine-init_state}{\code{SHMEngine$init_state()}}
 \item \href{#method-SHMEngine-reset_state}{\code{SHMEngine$reset_state()}}
-\item \href{#method-SHMEngine-print}{\code{SHMEngine$print()}}
+\item \href{#method-SHMEngine-format}{\code{SHMEngine$format()}}
 \item \href{#method-SHMEngine-clone}{\code{SHMEngine$clone()}}
 }
 }
@@ -117,6 +121,9 @@ Initialize internal state for adaptive method.
 }
 \if{html}{\out{</div>}}
 }
+\subsection{Returns}{
+The engine, invisibly, with its moment state set.
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-SHMEngine-reset_state"></a>}}
@@ -138,14 +145,18 @@ Reset moment states (e.g., after suppression changes antibody count).
 }
 \if{html}{\out{</div>}}
 }
+\subsection{Returns}{
+The engine, invisibly, with its moment state reset or subset.
+}
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-SHMEngine-print"></a>}}
-\if{latex}{\out{\hypertarget{method-SHMEngine-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-SHMEngine-format"></a>}}
+\if{latex}{\out{\hypertarget{method-SHMEngine-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{SHMEngine$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{SHMEngine$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -154,6 +165,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

@@ -20,6 +20,10 @@
 #' # Predict on new data
 #' preds <- model2$predict(X[1:10, ])
 #'
+#' @return An \code{\link[R6]{R6Class}} generator. \code{AINet$new()} returns
+#'   an \code{AINet} object. Call \code{$fit()} on it to train, then
+#'   \code{$predict()} to label new data.
+#'
 #' @importFrom R6 R6Class
 #' @importFrom stats rnorm runif sd quantile
 #' @export
@@ -89,132 +93,40 @@ AINet <- R6::R6Class(
     #'   candidate prototypes for sparse populations. Default FALSE.
     #' @param coverageQuantile Numeric in (0, 1). Affinity-coverage tail that
     #'   defines "poorly covered" points for \code{coverageBoost}. Default 0.05.
-    #' @param verbose Logical. Print progress.
-    initialize = function(nAntibodies = 20,
-                          beta = 5,
-                          epsilon = 0.01,
-                          maxIter = 50,
-                          k = 3,
-                          affinityFunc = "gaussian",
-                          distFunc = "euclidean",
+    #' @param minPerClass Integer. Classification only. Antibodies are seeded
+    #'   per class: each class gets \code{max(minPerClass, round(nAntibodies *
+    #'   class share))} antibodies drawn from its own observations with
+    #'   \code{initMethod}, and starts with that class label. Without this, a
+    #'   rare class (for example a population of a few cells in a cytometry
+    #'   sample) often receives no antibody at all and can never be
+    #'   predicted. The total can slightly exceed \code{nAntibodies}. Set to 0
+    #'   to sample all observations without regard to class. Ignored when an
+    #'   \code{init} module is supplied. Default 5.
+    #' @param verbose Logical. Report progress with \code{message()}, so it can
+    #'   be silenced with \code{suppressMessages()}.
+    initialize = function(nAntibodies = 20, beta = 5, epsilon = 0.01,
+                          maxIter = 50, k = 3,
+                          affinityFunc = "gaussian", distFunc = "euclidean",
                           affinityParams = list(alpha = 1, c = 1, p = 2,
                                                 Sigma = NULL),
-                          mutationDecay = 1.0,
-                          mutationMin = 0.01,
-                          maxClones = Inf,
-                          stopTolerance = 0.0,
-                          noImprovementLimit = Inf,
-                          initMethod = "sample",
-                          consolidate = TRUE,
-                          consolidationSteps = 10L,
+                          mutationDecay = 1.0, mutationMin = 0.01,
+                          maxClones = Inf, stopTolerance = 0.0,
+                          noImprovementLimit = Inf, initMethod = "sample",
+                          consolidate = TRUE, consolidationSteps = 10L,
                           scale = c("none", "zscore", "robust", "arcsinh"),
-                          scaleCofactor = 5,
-                          targetK = NULL,
-                          epsilonQuantile = NULL,
-                          coverageBoost = FALSE,
-                          coverageQuantile = 0.05,
-                          shm = NULL,
-                          init = NULL,
-                          activation = NULL,
-                          idiotypic = NULL,
-                          germinalCenter = NULL,
-                          microenvironment = NULL,
-                          memory = NULL,
-                          classSwitcher = NULL,
-                          verbose = TRUE) {
-
-      # Validate numeric parameters
-      stopifnot(
-        "nAntibodies must be a positive integer" = is.numeric(nAntibodies) && nAntibodies >= 1,
-        "beta must be positive" = is.numeric(beta) && beta > 0,
-        "epsilon must be non-negative" = is.numeric(epsilon) && epsilon >= 0,
-        "maxIter must be a positive integer" = is.numeric(maxIter) && maxIter >= 1,
-        "k must be a positive integer" = is.numeric(k) && k >= 1,
-        "mutationDecay must be in (0, 1]" = is.numeric(mutationDecay) && mutationDecay > 0 && mutationDecay <= 1,
-        "mutationMin must be non-negative" = is.numeric(mutationMin) && mutationMin >= 0
-      )
-
-      affinityFunc <- match.arg(affinityFunc, c("gaussian", "laplace",
-                                                "polynomial", "cosine", "hamming"))
-      distFunc     <- match.arg(distFunc, c("euclidean", "manhattan",
-                                            "minkowski", "cosine",
-                                            "mahalanobis", "hamming"))
-      scale        <- match.arg(scale)
-
-      if (!is.null(targetK)) {
-        stopifnot("targetK must be a positive integer" =
-                    is.numeric(targetK) && length(targetK) == 1L && targetK >= 1)
-        targetK <- as.integer(targetK)
-      }
-      if (!is.null(epsilonQuantile)) {
-        stopifnot("epsilonQuantile must be in (0, 1)" =
-                    is.numeric(epsilonQuantile) && length(epsilonQuantile) == 1L &&
-                    epsilonQuantile > 0 && epsilonQuantile < 1)
-      }
-
-      # --- Affinity/distance metric guard ---
-      # Clonal selection matures antibodies to maximize `affinityFunc`, but
-      # cluster assignment uses `distFunc`. If the two disagree on geometry the
-      # model optimizes one space and is read out in another. The worst case is
-      # cosine affinity (scores angle only, leaves antibody magnitude a free
-      # random walk) paired with a Euclidean-family distance: antibodies drift
-      # far off the data manifold and every point collapses onto one of them.
-      # Align the distance to the affinity's natural metric and warn rather than
-      # silently returning a degenerate clustering.
-      natural_dist <- c(gaussian = "euclidean", laplace = "manhattan",
-                        polynomial = "euclidean", cosine = "cosine",
-                        hamming = "hamming")[[affinityFunc]]
-      cosine_mismatch <- (affinityFunc == "cosine") != (distFunc == "cosine")
-      if (cosine_mismatch) {
-        warning(sprintf(
-          "affinityFunc='%s' and distFunc='%s' use inconsistent geometries; %s. Set distFunc='%s' to silence this.",
-          affinityFunc, distFunc,
-          sprintf("overriding distFunc to '%s'", natural_dist),
-          natural_dist), call. = FALSE)
-        distFunc <- natural_dist
-      }
-
-      config <- list(
-        nAntibodies       = as.integer(nAntibodies),
-        beta              = beta,
-        epsilon           = epsilon,
-        maxIter           = maxIter,
-        k                 = k,
-        affinityFunc      = affinityFunc,
-        distFunc          = distFunc,
-        affinityParams    = affinityParams,
-        mutationDecay     = mutationDecay,
-        mutationMin       = mutationMin,
-        maxClones         = maxClones,
-        stopTolerance     = stopTolerance,
-        noImprovementLimit = noImprovementLimit,
-        initMethod        = match.arg(initMethod, c("sample", "random",
-                                                     "random_uniform", "kmeans++")),
-        consolidate       = isTRUE(consolidate),
-        consolidationSteps = as.integer(consolidationSteps),
-        scale             = scale,
-        scaleCofactor     = scaleCofactor,
-        targetK           = targetK,
-        epsilonQuantile   = epsilonQuantile,
-        coverageBoost     = isTRUE(coverageBoost),
-        coverageQuantile  = coverageQuantile,
-        scaling           = NULL,  # populated at fit() with learned stats
-        verbose           = verbose
-      )
-
-      modules <- list(
-        shm              = shm,
-        init             = init,
-        activation       = activation,
-        idiotypic        = idiotypic,
-        germinalCenter   = germinalCenter,
-        microenvironment = microenvironment,
-        memory           = memory,
-        classSwitcher    = classSwitcher
-      )
-      # Remove NULL modules
-      modules <- modules[!vapply(modules, is.null, logical(1))]
-
+                          scaleCofactor = 5, targetK = NULL,
+                          epsilonQuantile = NULL, coverageBoost = FALSE,
+                          coverageQuantile = 0.05, minPerClass = 5,
+                          shm = NULL, init = NULL, activation = NULL,
+                          idiotypic = NULL, germinalCenter = NULL,
+                          microenvironment = NULL, memory = NULL,
+                          classSwitcher = NULL, verbose = TRUE) {
+      args <- as.list(environment())
+      .ainet_validate_args(args)
+      metric <- .ainet_align_metric(affinityFunc, distFunc)
+      config <- .ainet_build_config(args, metric)
+      # Keep only the modules the caller supplied, in a fixed order.
+      modules <- Filter(Negate(is.null), args[.AINET_MODULES])
       super$initialize(config = config, modules = modules)
     },
 
@@ -226,538 +138,633 @@ AINet <- R6::R6Class(
     #' @param ... Additional arguments (currently unused).
     #' @return Invisible self, with \code{result} populated.
     fit = function(X, y = NULL, task = NULL, ...) {
-      # Validate inputs
-      .validate_bHIVE_input(X, y)
+      # Each stage is a private method. They share one per-fit environment
+      # (ctx) and run in a fixed order, because several stages draw random
+      # numbers and results are reproducible only under this order.
+      ctx <- private$.fit_setup(X, y, task)
+      private$.fit_seed_antibodies(ctx)
+      private$.fit_kernel_setup(ctx)
+      private$.fit_recall_memory(ctx)
+      private$.fit_task_setup(ctx)
+      private$.fit_shm_setup(ctx)
+      private$.fit_loop_setup(ctx)
+      for (iter in seq_len(ctx$cfg$maxIter)) {
+        if (private$.fit_iteration(ctx, iter)) break
+      }
+      private$.report_idiotypic_fallbacks(ctx)
+      private$.fit_prune_orphans(ctx)
+      private$.fit_coverage_boost(ctx)
+      private$.fit_final_assignment(ctx)
+      private$.fit_archive_memory(ctx)
+      invisible(self)
+    }
+  ),
 
-      # Infer task
+  private = list(
+
+    # ======================================================================
+    # fit() stages
+    # ======================================================================
+    # ctx is an environment created by .fit_setup(). It holds the scaled data
+    # (X), the task bookkeeping, the kernel parameters (iter_alpha, c_p, p_p,
+    # Sigma_inv), the SHM moment state (m1, m2) and the per-antibody class
+    # labels. Stages mutate it in place so large matrices are not copied.
+
+    # --- 0. Validate, infer task, learn and apply input scaling -------------
+    .fit_setup = function(X, y, task) {
+      .validate_bHIVE_input(X, y)
       if (is.null(task)) {
         task <- if (is.null(y)) "clustering" else "classification"
       }
       task <- match.arg(task, c("clustering", "classification"))
-
       X <- as.matrix(X)
 
-      # ================================
-      # 0. Input scaling (C)
-      # ================================
       # Learn the transform on this training matrix and stash the stats so
       # predict() applies the identical map to new data. epsilon, mutation
       # scale and every distance are in feature units, so a fixed default
       # only behaves sensibly once features share a comparable scale.
       scaling <- private$.learn_scaling(X, self$config$scale,
                                         self$config$scaleCofactor)
-      X <- private$.apply_scaling(X, scaling)
       self$config$scaling <- scaling
+      self$history <- list()
 
-      n <- nrow(X)
-      d <- ncol(X)
-      cfg <- self$config
+      ctx <- new.env(parent = emptyenv())
+      ctx$X    <- private$.apply_scaling(X, scaling)
+      ctx$y    <- y
+      ctx$task <- task
+      ctx$n    <- nrow(ctx$X)
+      ctx$d    <- ncol(ctx$X)
+      ctx$cfg  <- self$config
+      ctx
+    },
 
-      # ================================
-      # 1. Initialize antibody population
-      # ================================
-      A <- private$.initialize_antibodies(X, cfg$nAntibodies, cfg$initMethod,
-                                          init_lib = self$modules$init)
+    # --- 1. Initial antibody population -------------------------------------
+    # Classification without an init module seeds antibodies per class so
+    # rare classes are represented from the start (see minPerClass).
+    .fit_seed_antibodies = function(ctx) {
+      cfg <- ctx$cfg
+      if (ctx$task == "classification" && cfg$minPerClass > 0 &&
+          is.null(self$modules$init)) {
+        seeded <- private$.stratified_antibodies(ctx$X, ctx$y, cfg)
+        ctx$A0 <- seeded$A
+        ctx$seed_classes <- seeded$classes
+      } else {
+        ctx$A0 <- private$.initialize_antibodies(ctx$X, cfg$nAntibodies,
+                                                 cfg$initMethod,
+                                                 init_lib = self$modules$init)
+      }
+      if (!is.matrix(ctx$A0) || nrow(ctx$A0) == 0L || ncol(ctx$A0) != ctx$d) {
+        stop("Antibody initialization must return a non-empty matrix with ",
+             "one column per feature.", call. = FALSE)
+      }
+      invisible(NULL)
+    },
 
-      # Memory recall (clustering only): merge relevant prior memory cells
-      # into the starting repertoire. Disabled for classification because
-      # MemoryPool$recall returns cells without their original class labels.
+    # Memory recall (clustering only): merge relevant prior memory cells into
+    # the starting repertoire, then build it. Runs after the kernel setup so
+    # recall uses the resolved bandwidth when alpha = "auto". Disabled for
+    # classification because MemoryPool$recall returns cells without their
+    # original class labels.
+    .fit_recall_memory = function(ctx) {
+      A   <- ctx$A0
       mem <- self$modules$memory
-      if (task == "clustering" && !is.null(mem) && mem$size() > 0L) {
-        recalled <- mem$recall(X,
-                                affinityFunc = cfg$affinityFunc,
-                                affinityParams = list(
-                                  alpha = cfg$affinityParams$alpha %||% 1,
-                                  c     = cfg$affinityParams$c %||% 1,
-                                  p     = cfg$affinityParams$p %||% 2))
-        if (nrow(recalled) > 0 && ncol(recalled) == d) {
+      if (ctx$task == "clustering" && !is.null(mem) && mem$size() > 0L) {
+        recalled <- mem$recall(ctx$X,
+                               affinityFunc = ctx$cfg$affinityFunc,
+                               affinityParams = list(alpha = ctx$iter_alpha,
+                                                     c = ctx$c_p,
+                                                     p = ctx$p_p))
+        if (nrow(recalled) > 0 && ncol(recalled) == ctx$d) {
           A <- rbind(A, recalled)
         }
       }
-
       self$repertoire <- ImmuneRepertoire$new(A)
-      m <- self$repertoire$size()
+      ctx$A0 <- NULL
+      invisible(NULL)
+    },
 
-      # ================================
-      # 2. Task-specific setup
-      # ================================
-      task_int <- switch(task, clustering = 0L, classification = 1L)
-      nClasses <- 0L
-      classes  <- NULL
-      if (task == "classification") {
-        classes  <- levels(y)
-        nClasses <- length(classes)
-        y_num    <- as.numeric(y) - 1  # 0-indexed class
+    # --- 2. Task-specific setup ---------------------------------------------
+    .fit_task_setup = function(ctx) {
+      ctx$task_int <- switch(ctx$task, clustering = 0L, classification = 1L)
+      ctx$nClasses <- 0L
+      ctx$classes  <- NULL
+      if (ctx$task == "classification") {
+        ctx$classes  <- levels(ctx$y)
+        ctx$nClasses <- length(ctx$classes)
+        ctx$y_num    <- as.numeric(ctx$y) - 1  # 0-indexed class
       } else {
-        y_num <- rep(0, n)
+        ctx$y_num <- rep(0, ctx$n)
       }
+      invisible(NULL)
+    },
 
-      # Affinity/distance params (base values; iter_alpha may be modulated
-      # by ClassSwitcher below).
-      # alpha = "auto" sets the RBF/Laplace bandwidth by the median heuristic:
-      # alpha = 1 / median(||x_i - x_j||^2) over a subsample of the (scaled)
-      # data, so the kernel resolves structure at the data's own length scale
-      # instead of the fixed alpha = 1 that is arbitrary once features are
-      # scaled. Only meaningful for distance-based kernels (gaussian/laplace).
+    # --- Kernel parameters --------------------------------------------------
+    # iter_alpha starts at the base alpha and may be modulated per iteration
+    # by ClassSwitcher. alpha = "auto" sets the RBF/Laplace bandwidth by the
+    # median heuristic, alpha = 1 / median(||x_i - x_j||^2) over a subsample
+    # of the (scaled) data, so the kernel resolves structure at the data's
+    # own length scale instead of the fixed alpha = 1 that is arbitrary once
+    # features are scaled. Only meaningful for gaussian/laplace kernels.
+    .fit_kernel_setup = function(ctx) {
+      cfg <- ctx$cfg
       base_alpha <- cfg$affinityParams$alpha %||% 1
       if (is.character(base_alpha) && identical(base_alpha, "auto")) {
-        base_alpha <- private$.auto_bandwidth(X, cfg$affinityFunc)
+        base_alpha <- private$.auto_bandwidth(ctx$X, cfg$affinityFunc)
         if (cfg$verbose) {
-          cat(sprintf("Auto bandwidth: alpha = %.5g\n", base_alpha))
+          message(sprintf("Auto bandwidth: alpha = %.5g", base_alpha))
         }
       }
-      c_p   <- cfg$affinityParams$c %||% 1
-      p_p   <- cfg$affinityParams$p %||% 2
-      iter_alpha <- base_alpha
-      Sigma_inv <- if (!is.null(cfg$affinityParams$Sigma)) {
+      ctx$c_p        <- cfg$affinityParams$c %||% 1
+      ctx$p_p        <- cfg$affinityParams$p %||% 2
+      ctx$iter_alpha <- base_alpha
+      ctx$Sigma_inv  <- if (!is.null(cfg$affinityParams$Sigma)) {
         solve(cfg$affinityParams$Sigma)
       } else {
         matrix(0, 0, 0)
       }
+      invisible(NULL)
+    },
 
-      # SHM dispatch params -- forwarded to clonal_selection_iteration_cpp.
-      # When no SHM module is supplied, fall back to "uniform" which
-      # reproduces the legacy decay-based mutation behavior.
+    # --- SHM dispatch -------------------------------------------------------
+    # Parameters are forwarded to clonal_selection_iteration_cpp. Without an
+    # SHM module, "uniform" reproduces the legacy decay-based mutation. The
+    # adaptive moment matrices are only allocated when used.
+    .fit_shm_setup = function(ctx) {
       shm_engine <- self$modules$shm
-      shm_method <- if (is.null(shm_engine)) "uniform" else shm_engine$method
-      shm_p <- if (is.null(shm_engine)) {
+      ctx$shm_method <- if (is.null(shm_engine)) "uniform" else shm_engine$method
+      ctx$shm_p <- if (is.null(shm_engine)) {
         list(c_rate = 1, temperature = 0.5, E_0 = 1, base_rate = 0.1,
              beta1 = 0.9, beta2 = 0.999, adam_epsilon = 1e-8)
       } else {
         shm_engine$params
       }
-
-      # Adaptive SHM moment matrices. Only allocated when used.
-      use_adaptive <- identical(shm_method, "adaptive")
-      m1_state <- if (use_adaptive) matrix(0, m, d) else matrix(0, 0, 0)
-      m2_state <- if (use_adaptive) matrix(0, m, d) else matrix(0, 0, 0)
-      if (use_adaptive && is.function(shm_engine$init_state)) {
-        shm_engine$init_state(m, d)
+      ctx$use_adaptive <- identical(ctx$shm_method, "adaptive")
+      m <- self$repertoire$size()
+      ctx$m1 <- if (ctx$use_adaptive) matrix(0, m, ctx$d) else matrix(0, 0, 0)
+      ctx$m2 <- if (ctx$use_adaptive) matrix(0, m, ctx$d) else matrix(0, 0, 0)
+      if (ctx$use_adaptive && is.function(shm_engine$init_state)) {
+        shm_engine$init_state(m, ctx$d)
       }
+      invisible(NULL)
+    },
 
-      # Early stopping state
-      noImproveCount <- 0
-      prevCount <- m
-
-      # Pre-allocate antibody_classes so gated-aside bookkeeping has a
-      # value to index into on iter=1 (the original code computed this
-      # only after clonal_selection_iteration_cpp inside the loop).
-      antibody_classes <- if (task == "classification") {
-        sample(classes, size = m, replace = TRUE)
+    # --- Early-stopping state and initial class labels ----------------------
+    # Classes are pre-allocated so the gated-aside bookkeeping has a value to
+    # index into on the first iteration.
+    .fit_loop_setup = function(ctx) {
+      m <- self$repertoire$size()
+      ctx$noImproveCount <- 0
+      ctx$prevCount      <- m
+      ctx$antibody_classes <- if (ctx$task == "classification") {
+        if (length(ctx$seed_classes) == m) {
+          ctx$seed_classes
+        } else {
+          sample(ctx$classes, size = m, replace = TRUE)
+        }
       } else {
         rep(NA_character_, m)
       }
+      invisible(NULL)
+    },
 
-      # ================================
-      # 3. Main iteration loop
-      # ================================
-      for (iter in seq_len(cfg$maxIter)) {
-        A_current <- self$repertoire$as_matrix()
-        m <- nrow(A_current)
+    # --- 3. One maturation iteration. Returns TRUE to stop early -------------
+    .fit_iteration = function(ctx, iter) {
+      aside <- private$.stage_activation_gate(ctx)
+      sel   <- private$.stage_clonal_selection(ctx, aside$A, iter)
+      private$.stage_rejoin(ctx, aside, sel)
+      private$.stage_germinal_center(ctx)
+      env   <- private$.stage_microenvironment(ctx, iter)
+      private$.stage_class_switch(ctx, env)
+      private$.stage_idiotypic(ctx)
+      m_new <- private$.stage_suppression(ctx)
+      private$.stage_record(ctx, iter, m_new)
+    },
 
-        # (a0) ActivationGate: gate antibodies in over-dense neighborhoods
-        # OUT of this round of clonal selection. They sit aside unchanged
-        # while clonal selection runs on the sparse subset, then rejoin
-        # the repertoire. Prevents runaway cloning into already-crowded
-        # regions of feature space.
-        gate <- self$modules$activation
-        gated_aside_A      <- NULL
-        gated_aside_classes <- NULL
-        gated_aside_m1     <- NULL
-        gated_aside_m2     <- NULL
-        if (!is.null(gate) && m > 4L) {
-          Ab_Ab_aff <- compute_affinity_matrix(A_current, A_current,
+    # Keep the per-antibody bookkeeping (class labels, SHM moments) aligned
+    # with the repertoire after it is subset. idx may be negative.
+    .subset_aux = function(ctx, idx) {
+      if (ctx$task == "classification") {
+        ctx$antibody_classes <- ctx$antibody_classes[idx]
+      }
+      if (ctx$use_adaptive) {
+        ctx$m1 <- ctx$m1[idx, , drop = FALSE]
+        ctx$m2 <- ctx$m2[idx, , drop = FALSE]
+      }
+      invisible(NULL)
+    },
+
+    # (a0) ActivationGate: antibodies in over-dense neighborhoods (or binding
+    # nothing) sit out this round of clonal selection unchanged, then rejoin.
+    # Prevents runaway cloning into already-crowded regions of feature space.
+    # Returns the selectable matrix A plus the set-aside rows.
+    .stage_activation_gate = function(ctx) {
+      A_current <- self$repertoire$as_matrix()
+      m   <- nrow(A_current)
+      out <- list(A = A_current, A_aside = NULL)
+      gate <- self$modules$activation
+      if (is.null(gate) || m <= 4L) return(out)
+
+      cfg <- ctx$cfg
+      Ab_Ab_aff <- compute_affinity_matrix(A_current, A_current,
+                                           cfg$affinityFunc,
+                                           ctx$iter_alpha, ctx$c_p, ctx$p_p)
+      diag(Ab_Ab_aff) <- 0
+      density <- rowSums(Ab_Ab_aff)
+      # threshold2 in [0, 1] is the density quantile above which an antibody
+      # is gated (e.g. 0.75 = top quartile sits out), clamped to [0.5, 0.95].
+      q_cut <- max(0.5, min(0.95, gate$threshold2 %||% 0.75))
+      gated_idx <- which(density > quantile(density, q_cut, na.rm = TRUE))
+
+      # Signal 1: an antibody whose max affinity to any data point is below
+      # threshold1 is also gated out (it isn't binding anything).
+      if (!is.null(gate$threshold1) && gate$threshold1 > 0) {
+        Ab_X_aff <- compute_affinity_matrix(ctx$X, A_current,
                                             cfg$affinityFunc,
-                                            iter_alpha, c_p, p_p)
-          diag(Ab_Ab_aff) <- 0
-          density <- rowSums(Ab_Ab_aff)
-
-          # threshold2 in [0, 1] is the density quantile above which an
-          # antibody is gated (e.g. 0.75 = top quartile sits out).
-          q_cut <- gate$threshold2 %||% 0.75
-          q_cut <- max(0.5, min(0.95, q_cut))  # clamp to sensible range
-          density_cut <- quantile(density, q_cut, na.rm = TRUE)
-          gated_idx   <- which(density > density_cut)
-
-          # Apply Signal 1 (affinity threshold) as an additional gate: an
-          # antibody whose max affinity to any data point is below
-          # threshold1 is also gated out (it isn't binding anything).
-          if (!is.null(gate$threshold1) && gate$threshold1 > 0) {
-            Ab_X_aff <- compute_affinity_matrix(X, A_current,
-                                             cfg$affinityFunc,
-                                             iter_alpha, c_p, p_p)
-            max_aff_per_ab <- apply(Ab_X_aff, 2, max)
-            low_aff_idx    <- which(max_aff_per_ab < gate$threshold1)
-            gated_idx      <- union(gated_idx, low_aff_idx)
-          }
-
-          # Ensure at least 2 antibodies still enter clonal selection
-          if (length(gated_idx) > 0 && (m - length(gated_idx)) >= 2L) {
-            gated_aside_A <- A_current[gated_idx, , drop = FALSE]
-            if (task == "classification") {
-              gated_aside_classes <- antibody_classes[gated_idx]
-            }
-            if (use_adaptive) {
-              gated_aside_m1 <- m1_state[gated_idx, , drop = FALSE]
-              gated_aside_m2 <- m2_state[gated_idx, , drop = FALSE]
-              m1_state <- m1_state[-gated_idx, , drop = FALSE]
-              m2_state <- m2_state[-gated_idx, , drop = FALSE]
-            }
-            A_current <- A_current[-gated_idx, , drop = FALSE]
-            if (task == "classification") {
-              antibody_classes <- antibody_classes[-gated_idx]
-            }
-          }
-        }
-
-        # (a) Clonal selection + SHM-dispatched mutation [C++]
-        cs_result <- clonal_selection_iteration_cpp(
-          A_current, X, y_num, task_int, cfg$k, cfg$beta,
-          cfg$maxClones, cfg$mutationDecay, cfg$mutationMin,
-          iter, cfg$affinityFunc, iter_alpha, c_p, p_p, nClasses,
-          shm_method,
-          shm_p$c_rate, shm_p$temperature, shm_p$E_0, shm_p$base_rate,
-          shm_p$beta1, shm_p$beta2, shm_p$adam_epsilon,
-          m1_state, m2_state
-        )
-        if (use_adaptive) {
-          m1_state <- cs_result$m1_state
-          m2_state <- cs_result$m2_state
-        }
-
-        # Update labels (on the selected subset only, then rejoin gated)
-        if (task == "classification") {
-          new_classes <- apply(cs_result$class_counts, 1, function(row) {
-            if (all(row == 0)) classes[sample(nClasses, 1)]
-            else classes[which.max(row)]
-          })
-        }
-
-        # Rejoin gated-aside antibodies to the post-selection repertoire.
-        # In classification, refresh their class labels by majority-vote
-        # of their nearest data points so stale random labels from the
-        # pre-allocation don't poison final predictions.
-        if (!is.null(gated_aside_A)) {
-          self$repertoire$cells <- rbind(cs_result$A, gated_aside_A)
-          if (task == "classification") {
-            ga_aff <- compute_affinity_matrix(X, gated_aside_A,
-                                                cfg$affinityFunc,
-                                                iter_alpha, c_p, p_p)
-            refreshed <- vapply(seq_len(nrow(gated_aside_A)), function(j) {
-              top <- order(ga_aff[, j], decreasing = TRUE)[
-                seq_len(min(cfg$k, nrow(ga_aff)))]
-              tab <- table(y[top])
-              names(tab)[which.max(tab)]
-            }, character(1))
-            antibody_classes <- c(new_classes, refreshed)
-          }
-          if (use_adaptive) {
-            m1_state <- rbind(m1_state, gated_aside_m1)
-            m2_state <- rbind(m2_state, gated_aside_m2)
-          }
-        } else {
-          self$repertoire$cells <- cs_result$A
-          if (task == "classification") {
-            antibody_classes <- new_classes
-          }
-        }
-
-        # (a1) GerminalCenter: Tfh-mediated quality selection. Probabilistic
-        # survival weighted by task-aware quality score (clustering: average
-        # affinity to assigned points; classification: majority-class purity).
-        # Survivor indices are mirrored onto antibody_classes and SHM state.
-        gc_mod <- self$modules$germinalCenter
-        if (!is.null(gc_mod) && self$repertoire$size() > gc_mod$nTfh) {
-          gc_surv <- gc_mod$select(
-            self$repertoire, X, y, task,
-            affinityFunc   = cfg$affinityFunc,
-            affinityParams = list(alpha = iter_alpha, c = c_p, p = p_p))
-          if (task == "classification") {
-            antibody_classes <- antibody_classes[gc_surv]
-          }
-          if (use_adaptive) {
-            m1_state <- m1_state[gc_surv, , drop = FALSE]
-            m2_state <- m2_state[gc_surv, , drop = FALSE]
-          }
-        }
-
-        # (a2) Microenvironment-aware mutation jitter [optional]
-        # Density-dependent perturbation: antibodies in over-dense regions
-        # of feature space get small jitter (stabilize / memory-like);
-        # antibodies in sparse regions get large jitter (explore / push
-        # outward), countering the clonal-selection drift toward the
-        # data centroid. Class labels are preserved across the jitter.
-        microenv <- self$modules$microenvironment
-        env <- NULL
-        if (!is.null(microenv) && self$repertoire$size() > 4L) {
-          env <- microenv$assess(self$repertoire, X,
-                                  affinityFunc = cfg$affinityFunc,
-                                  affinityParams = list(alpha = iter_alpha,
-                                                          c = c_p,
-                                                          p = p_p))
-          A_post   <- self$repertoire$as_matrix()
-          x_sd     <- apply(X, 2, sd)
-          decay    <- cfg$mutationDecay ^ max(iter - 1, 0)
-          base_amp <- 0.005 * decay  # ~0.5% of feature SD on iter 1, decaying
-          mods     <- env$mutation_modifiers
-          d_cols   <- ncol(A_post)
-          for (j in seq_len(nrow(A_post))) {
-            if (mods[j] <= 0) next
-            sigma <- base_amp * mods[j] * x_sd
-            A_post[j, ] <- A_post[j, ] + rnorm(d_cols, 0, sigma)
-          }
-          self$repertoire$cells <- A_post
-        }
-
-        # (a3) ClassSwitcher: bind isotype to microenvironment zone and use
-        # the population-mean per-isotype alpha for the NEXT iteration's
-        # affinity calls. Requires Microenvironment to have run this iter
-        # (otherwise we have no zones to switch on). Per-antibody alpha is
-        # aggregated to a scalar since the C++ kernels take a scalar alpha.
-        cs_mod <- self$modules$classSwitcher
-        if (!is.null(cs_mod) && !is.null(env)) {
-          alphas <- cs_mod$switch_isotypes(self$repertoire, env$zones)
-          iter_alpha <- mean(alphas)
-        }
-
-        # (b) Idiotypic regulation [C++, optional]
-        # Bell-curve Ab-Ab dynamics cull antibodies in over-crowded niches
-        # (over-stimulation -> suppression) and isolated antibodies (under-
-        # stimulation -> death), leaving a diversity-preserving repertoire.
-        # Runs BEFORE epsilon-ball network suppression so the two operators
-        # ablate independently. See IdiotypicNetwork for parameter semantics.
-        idi <- self$modules$idiotypic
-        if (!is.null(idi)) {
-          idi_out <- idiotypic_dynamics_cpp(
-            self$repertoire$as_matrix(),
-            cfg$affinityFunc, iter_alpha, c_p, p_p,
-            idi$theta_low, idi$theta_high,
-            idi$source_rate, idi$decay_rate,
-            idi$dt, as.integer(idi$timeSteps),
-            idi$survival_threshold
-          )
-          surv_idx <- which(as.logical(idi_out$keep))
-
-          # Safety net: if dynamics would kill every antibody (e.g. ill-tuned
-          # thresholds for the current data scale), keep the top-population
-          # antibodies so the iteration can continue and a downstream sweep
-          # can still penalize this configuration via low Silhouette / kappa.
-          if (length(surv_idx) == 0L) {
-            pop <- as.numeric(idi_out$population)
-            keep_n <- max(1L, floor(0.1 * length(pop)))
-            surv_idx <- order(pop, decreasing = TRUE)[seq_len(keep_n)]
-          }
-
-          self$repertoire$subset(surv_idx)
-          if (task == "classification") {
-            antibody_classes <- antibody_classes[surv_idx]
-          }
-          if (use_adaptive) {
-            m1_state <- m1_state[surv_idx, , drop = FALSE]
-            m2_state <- m2_state[surv_idx, , drop = FALSE]
-          }
-        }
-
-        # (c) Network suppression [C++]
-        # Removes near-duplicate antibodies within an epsilon-ball in distFunc.
-        # With epsilonQuantile set, the threshold tracks the current antibody
-        # spread (a low quantile of their pairwise distances) so suppression is
-        # scale-free and adapts as the repertoire contracts, rather than using a
-        # fixed feature-unit epsilon that means different things per dataset.
-        eps_iter <- cfg$epsilon
-        if (!is.null(cfg$epsilonQuantile)) {
-          eps_iter <- private$.adaptive_epsilon(
-            self$repertoire$cells, cfg$distFunc, cfg$epsilonQuantile,
-            p_p, Sigma_inv, fallback = cfg$epsilon)
-        }
-        keep <- network_suppression_cpp(
-          self$repertoire$cells, cfg$distFunc, eps_iter,
-          p_p, Sigma_inv
-        )
-        kept_idx <- which(keep)
-        self$repertoire$subset(kept_idx)
-        m_new <- self$repertoire$size()
-
-        if (task == "classification") {
-          antibody_classes <- antibody_classes[kept_idx]
-        }
-        if (use_adaptive) {
-          m1_state <- m1_state[kept_idx, , drop = FALSE]
-          m2_state <- m2_state[kept_idx, , drop = FALSE]
-        }
-
-        if (m_new == 0) {
-          stop("All antibodies were suppressed. Increase nAntibodies or decrease epsilon.")
-        }
-
-        # Record iteration history
-        self$history[[iter]] <- list(n_antibodies = m_new)
-
-        # Early stopping
-        changeCount <- abs(m_new - prevCount)
-        if (changeCount <= cfg$stopTolerance) {
-          noImproveCount <- noImproveCount + 1
-        } else {
-          noImproveCount <- 0
-        }
-        prevCount <- m_new
-
-        if (noImproveCount >= cfg$noImprovementLimit) {
-          if (cfg$verbose) {
-            cat("Early stopping: no improvement for", noImproveCount, "iterations.\n")
-          }
-          break
-        }
-
-        if (cfg$verbose) {
-          cat(sprintf("Iteration %d | #Antibodies: %d | noImproveCount: %d\n",
-                      iter, m_new, noImproveCount))
-        }
+                                            ctx$iter_alpha, ctx$c_p, ctx$p_p)
+        low_aff_idx <- which(apply(Ab_X_aff, 2, max) < gate$threshold1)
+        gated_idx   <- union(gated_idx, low_aff_idx)
       }
 
-      # ================================
-      # 4. Final assignment [C++]
-      # ================================
-      A_final <- self$repertoire$as_matrix()
-      m <- nrow(A_final)
+      # At least 2 antibodies must still enter clonal selection.
+      if (length(gated_idx) == 0 || (m - length(gated_idx)) < 2L) return(out)
+      out$A_aside <- A_current[gated_idx, , drop = FALSE]
+      if (ctx$use_adaptive) {
+        out$m1 <- ctx$m1[gated_idx, , drop = FALSE]
+        out$m2 <- ctx$m2[gated_idx, , drop = FALSE]
+      }
+      private$.subset_aux(ctx, -gated_idx)
+      out$A <- A_current[-gated_idx, , drop = FALSE]
+      out
+    },
 
-      # ================================
-      # 4a. Orphan-antibody pruning
-      # ================================
-      # Drop antibodies that are not the nearest neighbor to any training
-      # point. These are surviving "ghost" antibodies (passed idiotypic
-      # and network suppression but bind nothing) that inflate the
-      # repertoire without contributing predictions. Pruning them stops
-      # them from causing test-time mis-assignments and tightens the
-      # cluster-count = effective-antibody-count relationship.
-      fa_pre <- final_assignment_cpp(X, A_final, cfg$affinityFunc,
-                                       cfg$distFunc,
-                                       switch(task, clustering = 0L,
-                                                       classification = 1L),
-                                       iter_alpha, c_p, p_p, Sigma_inv)
-      assigned_to <- if (task == "clustering") {
+    # (a) Clonal selection + SHM-dispatched mutation [C++]. Returns the
+    # selected antibodies and, for classification, their majority labels.
+    .stage_clonal_selection = function(ctx, A, iter) {
+      cfg   <- ctx$cfg
+      shm_p <- ctx$shm_p
+      cs <- clonal_selection_iteration_cpp(
+        A, ctx$X, ctx$y_num, ctx$task_int, cfg$k, cfg$beta,
+        cfg$maxClones, cfg$mutationDecay, cfg$mutationMin,
+        iter, cfg$affinityFunc, ctx$iter_alpha, ctx$c_p, ctx$p_p,
+        ctx$nClasses, ctx$shm_method,
+        shm_p$c_rate, shm_p$temperature, shm_p$E_0, shm_p$base_rate,
+        shm_p$beta1, shm_p$beta2, shm_p$adam_epsilon,
+        ctx$m1, ctx$m2
+      )
+      if (ctx$use_adaptive) {
+        ctx$m1 <- cs$m1_state
+        ctx$m2 <- cs$m2_state
+      }
+      new_classes <- NULL
+      if (ctx$task == "classification") {
+        classes  <- ctx$classes
+        nClasses <- ctx$nClasses
+        new_classes <- apply(cs$class_counts, 1, function(row) {
+          if (all(row == 0)) classes[sample(nClasses, 1)]
+          else classes[which.max(row)]
+        })
+      }
+      list(A = cs$A, classes = new_classes)
+    },
+
+    # Rejoin gated-aside antibodies to the post-selection repertoire. In
+    # classification, refresh their labels by majority vote of their nearest
+    # data points so stale random labels from pre-allocation don't poison
+    # final predictions.
+    .stage_rejoin = function(ctx, aside, sel) {
+      if (is.null(aside$A_aside)) {
+        self$repertoire$cells <- sel$A
+        if (ctx$task == "classification") ctx$antibody_classes <- sel$classes
+        return(invisible(NULL))
+      }
+      self$repertoire$cells <- rbind(sel$A, aside$A_aside)
+      if (ctx$task == "classification") {
+        cfg <- ctx$cfg
+        y   <- ctx$y
+        ga_aff <- compute_affinity_matrix(ctx$X, aside$A_aside,
+                                          cfg$affinityFunc,
+                                          ctx$iter_alpha, ctx$c_p, ctx$p_p)
+        refreshed <- vapply(seq_len(nrow(aside$A_aside)), function(j) {
+          top <- order(ga_aff[, j], decreasing = TRUE)[
+            seq_len(min(cfg$k, nrow(ga_aff)))]
+          tab <- table(y[top])
+          names(tab)[which.max(tab)]
+        }, character(1))
+        ctx$antibody_classes <- c(sel$classes, refreshed)
+      }
+      if (ctx$use_adaptive) {
+        ctx$m1 <- rbind(ctx$m1, aside$m1)
+        ctx$m2 <- rbind(ctx$m2, aside$m2)
+      }
+      invisible(NULL)
+    },
+
+    # (a1) GerminalCenter: Tfh-mediated quality selection. Probabilistic
+    # survival weighted by a task-aware quality score (clustering: average
+    # affinity to assigned points; classification: majority-class purity).
+    .stage_germinal_center = function(ctx) {
+      gc_mod <- self$modules$germinalCenter
+      if (is.null(gc_mod) || self$repertoire$size() <= gc_mod$nTfh) {
+        return(invisible(NULL))
+      }
+      gc_surv <- gc_mod$select(
+        self$repertoire, ctx$X, ctx$y, ctx$task,
+        affinityFunc   = ctx$cfg$affinityFunc,
+        affinityParams = list(alpha = ctx$iter_alpha, c = ctx$c_p,
+                              p = ctx$p_p))
+      private$.subset_aux(ctx, gc_surv)
+      invisible(NULL)
+    },
+
+    # (a2) Microenvironment-aware mutation jitter. Antibodies in over-dense
+    # regions get small jitter (stabilize, memory-like). Antibodies in sparse
+    # regions get large jitter (explore), countering the clonal-selection
+    # drift toward the data centroid. Class labels are preserved. Returns the
+    # zone assessment for ClassSwitcher, or NULL when the module is off.
+    .stage_microenvironment = function(ctx, iter) {
+      microenv <- self$modules$microenvironment
+      if (is.null(microenv) || self$repertoire$size() <= 4L) return(NULL)
+      cfg <- ctx$cfg
+      env <- microenv$assess(self$repertoire, ctx$X,
+                             affinityFunc = cfg$affinityFunc,
+                             affinityParams = list(alpha = ctx$iter_alpha,
+                                                   c = ctx$c_p, p = ctx$p_p))
+      A_post   <- self$repertoire$as_matrix()
+      x_sd     <- apply(ctx$X, 2, sd)
+      decay    <- cfg$mutationDecay ^ max(iter - 1, 0)
+      base_amp <- 0.005 * decay  # ~0.5% of feature SD on iter 1, decaying
+      mods     <- env$mutation_modifiers
+      for (j in seq_len(nrow(A_post))) {
+        if (mods[j] <= 0) next
+        sigma <- base_amp * mods[j] * x_sd
+        A_post[j, ] <- A_post[j, ] + rnorm(ncol(A_post), 0, sigma)
+      }
+      self$repertoire$cells <- A_post
+      env
+    },
+
+    # (a3) ClassSwitcher: bind isotype to microenvironment zone and use the
+    # population-mean per-isotype alpha for the NEXT iteration's affinity
+    # calls. Needs this iteration's zones. The C++ kernels take a scalar
+    # alpha, so per-antibody alphas are averaged.
+    .stage_class_switch = function(ctx, env) {
+      cs_mod <- self$modules$classSwitcher
+      if (!is.null(cs_mod) && !is.null(env)) {
+        alphas <- cs_mod$switch_isotypes(self$repertoire, env$zones)
+        ctx$iter_alpha <- mean(alphas)
+      }
+      invisible(NULL)
+    },
+
+    # (b) Idiotypic regulation [C++]. Bell-curve Ab-Ab dynamics cull
+    # antibodies in over-crowded niches (over-stimulation) and isolated ones
+    # (under-stimulation), leaving a diversity-preserving repertoire. Runs
+    # BEFORE epsilon-ball suppression so the two operators ablate
+    # independently. See IdiotypicNetwork for parameter semantics.
+    .stage_idiotypic = function(ctx) {
+      idi <- self$modules$idiotypic
+      if (is.null(idi)) return(invisible(NULL))
+      idi_out <- idiotypic_dynamics_cpp(
+        self$repertoire$as_matrix(),
+        ctx$cfg$affinityFunc, ctx$iter_alpha, ctx$c_p, ctx$p_p,
+        idi$theta_low, idi$theta_high, idi$source_rate, idi$decay_rate,
+        idi$dt, as.integer(idi$timeSteps), idi$survival_threshold
+      )
+      surv_idx <- which(as.logical(idi_out$keep))
+      # Safety net: if the dynamics would kill every antibody (ill-tuned
+      # thresholds for this data scale), keep the top-population 10% so the
+      # run continues and a downstream sweep can still score it low. Counted
+      # so fit() can report it once rather than acting silently.
+      if (length(surv_idx) == 0L) {
+        pop    <- as.numeric(idi_out$population)
+        keep_n <- max(1L, floor(0.1 * length(pop)))
+        surv_idx <- order(pop, decreasing = TRUE)[seq_len(keep_n)]
+        ctx$idi_fallbacks <- (ctx$idi_fallbacks %||% 0L) + 1L
+      }
+      self$repertoire$subset(surv_idx)
+      private$.subset_aux(ctx, surv_idx)
+      invisible(NULL)
+    },
+
+    # (c) Network suppression [C++]. Removes near-duplicate antibodies within
+    # an epsilon-ball in distFunc. With epsilonQuantile set, the threshold
+    # tracks the current antibody spread so suppression is scale-free.
+    # Returns the surviving repertoire size.
+    .stage_suppression = function(ctx) {
+      cfg <- ctx$cfg
+      eps_iter <- cfg$epsilon
+      if (!is.null(cfg$epsilonQuantile)) {
+        eps_iter <- private$.adaptive_epsilon(
+          self$repertoire$cells, cfg$distFunc, cfg$epsilonQuantile,
+          ctx$p_p, ctx$Sigma_inv, fallback = cfg$epsilon)
+      }
+      keep <- network_suppression_cpp(self$repertoire$cells, cfg$distFunc,
+                                      eps_iter, ctx$p_p, ctx$Sigma_inv)
+      kept_idx <- which(keep)
+      self$repertoire$subset(kept_idx)
+      private$.subset_aux(ctx, kept_idx)
+      m_new <- self$repertoire$size()
+      if (m_new == 0) {
+        stop("All antibodies were suppressed. Increase nAntibodies or decrease epsilon.")
+      }
+      m_new
+    },
+
+    # Record history, update early stopping, report progress. Returns TRUE
+    # when the run should stop.
+    .stage_record = function(ctx, iter, m_new) {
+      cfg <- ctx$cfg
+      self$history[[iter]] <- list(n_antibodies = m_new)
+      changeCount <- abs(m_new - ctx$prevCount)
+      ctx$noImproveCount <- if (changeCount <= cfg$stopTolerance) {
+        ctx$noImproveCount + 1
+      } else {
+        0
+      }
+      ctx$prevCount <- m_new
+      if (ctx$noImproveCount >= cfg$noImprovementLimit) {
+        if (cfg$verbose) {
+          message("Early stopping: no improvement for ", ctx$noImproveCount,
+                  " iterations.")
+        }
+        return(TRUE)
+      }
+      if (cfg$verbose) {
+        message(sprintf("Iteration %d | #Antibodies: %d | noImproveCount: %d",
+                        iter, m_new, ctx$noImproveCount))
+      }
+      FALSE
+    },
+
+    # The idiotypic rule applies the bell activation to each antibody pair,
+    # so in a large or spread-out repertoire every distant antibody counts
+    # as a suppressor and the dynamics remove everything. Say so once per
+    # fit (see ?IdiotypicNetwork) instead of falling back silently.
+    .report_idiotypic_fallbacks = function(ctx) {
+      n_fb <- ctx$idi_fallbacks %||% 0L
+      if (n_fb > 0L) {
+        message("IdiotypicNetwork removed every antibody in ", n_fb, " of ",
+                length(self$history), " iterations; the top 10% by ",
+                "population were kept each time. See ?IdiotypicNetwork for ",
+                "when the module applies.")
+      }
+      invisible(NULL)
+    },
+
+    # --- 4a. Orphan-antibody pruning ----------------------------------------
+    # Drop antibodies that are not the nearest neighbor of any training
+    # point. These "ghost" antibodies survived suppression but bind nothing.
+    # Pruning stops test-time mis-assignments and tightens the link between
+    # cluster count and effective antibody count.
+    .fit_prune_orphans = function(ctx) {
+      cfg <- ctx$cfg
+      A_final <- self$repertoire$as_matrix()
+      fa_pre <- final_assignment_cpp(ctx$X, A_final, cfg$affinityFunc,
+                                     cfg$distFunc, ctx$task_int,
+                                     ctx$iter_alpha, ctx$c_p, ctx$p_p,
+                                     ctx$Sigma_inv)
+      assigned_to <- if (ctx$task == "clustering") {
         as.integer(fa_pre$assignments)
       } else {
         as.integer(fa_pre$best_antibody_idx)
       }
-      counts <- tabulate(assigned_to, nbins = m)
-      orphan <- counts == 0L
+      orphan <- tabulate(assigned_to, nbins = nrow(A_final)) == 0L
       if (any(orphan) && sum(!orphan) >= 2L) {
         keep_idx <- which(!orphan)
         A_final  <- A_final[keep_idx, , drop = FALSE]
-        if (task == "classification") {
-          antibody_classes <- antibody_classes[keep_idx]
-        }
+        private$.subset_aux(ctx, keep_idx)
         self$repertoire$subset(keep_idx)
-        m <- nrow(A_final)
       }
+      ctx$A_final <- A_final
+      invisible(NULL)
+    },
 
-      # ================================
-      # 4a'. Coverage boost (D)
-      # ================================
-      # Clonal expansion follows density, so rare populations can end the run
-      # with no nearby prototype. Find the worst-covered points (lowest max
-      # affinity to any surviving antibody) and drop k-means++ seeds among them
-      # so the final assignment / forced-K refinement has candidate prototypes
-      # for those regions. Clustering only (new seeds carry no class label).
-      if (task == "clustering" && isTRUE(cfg$coverageBoost) && nrow(A_final) >= 1L) {
-        cov_aff <- compute_affinity_matrix(X, A_final, cfg$affinityFunc,
-                                           iter_alpha, c_p, p_p)
-        coverage <- apply(cov_aff, 1, max)
-        thr <- stats::quantile(coverage, cfg$coverageQuantile, names = FALSE,
-                               na.rm = TRUE)
-        under <- which(coverage <= thr)
-        if (length(under) >= 2L) {
-          n_new <- min(length(under), max(2L, round(0.5 * cfg$nAntibodies)))
-          new_seeds <- init_kmeanspp_cpp(X[under, , drop = FALSE], n_new)
-          A_final <- rbind(A_final, new_seeds)
-          self$repertoire$cells <- A_final
-          if (cfg$verbose) {
-            cat(sprintf("Coverage boost: +%d antibodies for %d under-covered points\n",
+    # --- 4a'. Coverage boost (clustering only) ------------------------------
+    # Clonal expansion follows density, so rare populations can end the run
+    # with no nearby prototype. Seed k-means++ antibodies among the
+    # worst-covered points (lowest max affinity to any survivor) so the final
+    # assignment or forced-K refinement has candidates for those regions.
+    .fit_coverage_boost = function(ctx) {
+      cfg <- ctx$cfg
+      A_final <- ctx$A_final
+      if (ctx$task != "clustering" || !isTRUE(cfg$coverageBoost) ||
+          nrow(A_final) < 1L) {
+        return(invisible(NULL))
+      }
+      cov_aff <- compute_affinity_matrix(ctx$X, A_final, cfg$affinityFunc,
+                                         ctx$iter_alpha, ctx$c_p, ctx$p_p)
+      coverage <- apply(cov_aff, 1, max)
+      thr <- stats::quantile(coverage, cfg$coverageQuantile, names = FALSE,
+                             na.rm = TRUE)
+      under <- which(coverage <= thr)
+      if (length(under) < 2L) return(invisible(NULL))
+      n_new <- min(length(under), max(2L, round(0.5 * cfg$nAntibodies)))
+      new_seeds <- init_kmeanspp_cpp(ctx$X[under, , drop = FALSE], n_new)
+      ctx$A_final <- rbind(A_final, new_seeds)
+      self$repertoire$cells <- ctx$A_final
+      if (cfg$verbose) {
+        message(sprintf("Coverage boost: +%d antibodies for %d under-covered points",
                         n_new, length(under)))
-          }
-        }
       }
+      invisible(NULL)
+    },
 
-      # ================================
-      # 4b. Final assignment [C++]
-      # ================================
-      if (task == "clustering") {
-        if (!is.null(cfg$targetK)) {
-          # Target-K mode (A): the matured antibodies supply seeds, but the
-          # reported partition is forced to exactly targetK via a seeded Lloyd
-          # refinement. Decouples the cluster count from the emergent
-          # suppression dynamics, which otherwise under-/over-cluster depending
-          # on scale.
-          fk <- private$.force_k(X, A_final, cfg$targetK, cfg,
-                                 iter_alpha, c_p, p_p, Sigma_inv)
-          A_final     <- fk$antibodies
-          assignments <- fk$assignments
-        } else if (cfg$consolidate && cfg$consolidationSteps > 0L &&
-            nrow(A_final) >= 2L) {
-          # Consolidation (M-step): pull antibodies onto the data manifold so
-          # they are genuine data-space prototypes, not affinity-maximizing
-          # directions that may sit far off the data (see metric guard).
-          cons <- private$.consolidate_clusters(X, A_final, cfg,
-                                                 iter_alpha, c_p, p_p, Sigma_inv)
-          A_final     <- cons$antibodies
-          assignments <- cons$assignments
-          # Note: self$repertoire is left as the matured antibodies (with their
-          # isotype/age/lineage metadata and memory state). Consolidation merges
-          # clusters, so the centroids have no 1:1 identity with repertoire rows;
-          # they are the reported prototypes (result$antibodies), while the
-          # repertoire stays the biological population that memory archives.
-        } else {
-          fa <- final_assignment_cpp(X, A_final, cfg$affinityFunc, cfg$distFunc,
-                                     0L, iter_alpha, c_p, p_p, Sigma_inv)
-          assignments <- as.numeric(factor(fa$assignments))
-        }
-        self$result <- list(
-          antibodies  = A_final,
-          assignments = assignments,
-          # Prototypes back-transformed to the original feature space (for
-          # interpretation); identical to `antibodies` when scale = "none".
-          antibodies_unscaled =
-            private$.invert_scaling(A_final, cfg$scaling),
-          task        = task
-        )
+    # --- 4b. Final assignment -----------------------------------------------
+    # The kernel actually used for the read-out is stored on the config so
+    # predict() reproduces the training assignments exactly: the resolved
+    # bandwidth (alpha = "auto", ClassSwitcher modulation) and the metric
+    # that produced the labels (Euclidean after Lloyd refinement).
+    .fit_final_assignment = function(ctx) {
+      ctx$assign_dist <- ctx$cfg$distFunc
+      if (ctx$task == "clustering") {
+        private$.final_clustering(ctx)
+      } else {
+        private$.final_classification(ctx)
+      }
+      self$config$kernel <- list(alpha = ctx$iter_alpha, c = ctx$c_p,
+                                 p = ctx$p_p, assignDist = ctx$assign_dist)
+      invisible(NULL)
+    },
+
+    # Clustering read-out. targetK forces the cluster count through a seeded
+    # Lloyd refinement. Otherwise consolidation pulls antibodies onto the
+    # data manifold so they are genuine data-space prototypes. The repertoire
+    # itself stays the matured biological population that memory archives,
+    # since consolidated centroids have no 1:1 identity with its rows.
+    .final_clustering = function(ctx) {
+      cfg <- ctx$cfg
+      X <- ctx$X
+      A_final <- ctx$A_final
+      if (!is.null(cfg$targetK)) {
+        out <- private$.force_k(X, A_final, cfg$targetK, cfg, ctx$iter_alpha,
+                                ctx$c_p, ctx$p_p, ctx$Sigma_inv)
+        ctx$assign_dist <- "euclidean"
+      } else if (cfg$consolidate && cfg$consolidationSteps > 0L &&
+                 nrow(A_final) >= 2L) {
+        out <- private$.consolidate_clusters(X, A_final, cfg, ctx$iter_alpha,
+                                             ctx$c_p, ctx$p_p, ctx$Sigma_inv)
+        ctx$assign_dist <- "euclidean"
       } else {
         fa <- final_assignment_cpp(X, A_final, cfg$affinityFunc, cfg$distFunc,
-                                   1L, iter_alpha, c_p, p_p, Sigma_inv)
-        assignments <- antibody_classes[fa$best_antibody_idx]
-        self$result <- list(
-          antibodies       = A_final,
-          assignments      = assignments,
-          antibody_classes = antibody_classes,
-          antibodies_unscaled =
-            private$.invert_scaling(A_final, cfg$scaling),
-          task             = task
-        )
+                                   0L, ctx$iter_alpha, ctx$c_p, ctx$p_p,
+                                   ctx$Sigma_inv)
+        # Keep only antibodies that win points so row i is cluster i.
+        used <- sort(unique(fa$assignments))
+        out  <- list(antibodies  = A_final[used, , drop = FALSE],
+                     assignments = as.numeric(match(fa$assignments, used)))
       }
+      self$result <- list(
+        antibodies  = out$antibodies,
+        assignments = out$assignments,
+        # Prototypes back-transformed to the original feature space (for
+        # interpretation); identical to `antibodies` when scale = "none".
+        antibodies_unscaled =
+          private$.invert_scaling(out$antibodies, cfg$scaling),
+        task        = ctx$task
+      )
+      invisible(NULL)
+    },
 
-      # ================================
-      # 5. Memory archive (post-training)
-      # ================================
-      # High-affinity antibodies become long-lived memory cells that
-      # persist on the MemoryPool across fit() calls. For classification,
-      # carry class labels in repertoire metadata so recall consumers can
-      # use them later.
-      if (!is.null(mem)) {
-        if (task == "classification") {
-          self$repertoire$metadata$class_label <- antibody_classes
-        }
-        mem$archive(self$repertoire, X,
-                    affinityFunc   = cfg$affinityFunc,
-                    affinityParams = list(alpha = iter_alpha,
-                                          c     = c_p,
-                                          p     = p_p))
+    .final_classification = function(ctx) {
+      cfg <- ctx$cfg
+      A_final <- ctx$A_final
+      fa <- final_assignment_cpp(ctx$X, A_final, cfg$affinityFunc,
+                                 cfg$distFunc, 1L, ctx$iter_alpha, ctx$c_p,
+                                 ctx$p_p, ctx$Sigma_inv)
+      self$result <- list(
+        antibodies       = A_final,
+        assignments      = ctx$antibody_classes[fa$best_antibody_idx],
+        antibody_classes = ctx$antibody_classes,
+        antibodies_unscaled =
+          private$.invert_scaling(A_final, cfg$scaling),
+        task             = ctx$task,
+        # Row of `antibodies` that labeled each training point.
+        antibody_index   = as.integer(fa$best_antibody_idx)
+      )
+      invisible(NULL)
+    },
+
+    # --- 5. Memory archive --------------------------------------------------
+    # High-affinity antibodies become long-lived memory cells that persist on
+    # the MemoryPool across fit() calls. Classification labels ride along in
+    # the repertoire metadata so recall consumers can use them later.
+    .fit_archive_memory = function(ctx) {
+      mem <- self$modules$memory
+      if (is.null(mem)) return(invisible(NULL))
+      if (ctx$task == "classification") {
+        self$repertoire$metadata$class_label <- ctx$antibody_classes
       }
+      mem$archive(self$repertoire, ctx$X,
+                  affinityFunc   = ctx$cfg$affinityFunc,
+                  affinityParams = list(alpha = ctx$iter_alpha,
+                                        c     = ctx$c_p,
+                                        p     = ctx$p_p))
+      invisible(NULL)
+    },
 
-      invisible(self)
-    }
-  ),
-
-  private = list(
+    # ======================================================================
+    # Helpers
+    # ======================================================================
 
     # --- Input scaling (C) --------------------------------------------------
     # Thin method wrappers around the file-level scaling helpers so the fit()
@@ -803,103 +810,107 @@ AINet <- R6::R6Class(
       as.numeric(stats::quantile(du, probs = q, names = FALSE))
     },
 
-    # --- Force exactly K clusters (A) ---------------------------------------
-    # Use the matured antibodies as informed seeds, coerce to exactly K
-    # centroids, then run Euclidean Lloyd to convergence. If the network kept
-    # more than K prototypes, agglomerate the closest pairs (Ward on the
-    # antibodies) down to K; if fewer, add k-means++ seeds drawn from the data
-    # so under-clustering can be corrected. Euclidean refinement is used because
-    # the arithmetic mean is the L2-optimal centroid (consistent, monotone),
-    # independent of the training affinity which already drove the search.
+    # --- Force K clusters (A) -----------------------------------------------
+    # Use the matured antibodies as informed seeds, coerce to K centroids,
+    # then run Euclidean Lloyd. If the network kept more than K prototypes,
+    # agglomerate the closest (Ward on the antibodies) down to K. If fewer,
+    # add k-means++ seeds drawn from the data so under-clustering can be
+    # corrected. The seed assignment is by affinity argmax to the seeds.
     .force_k = function(X, A, K, cfg, alpha, c_p, p_p, Sigma_inv) {
       d <- ncol(X)
-      n <- nrow(X)
-      K <- min(K, n)  # cannot ask for more clusters than points
+      K <- min(K, nrow(X))  # cannot ask for more clusters than points
       m <- nrow(A)
-
       if (m > K) {
-        # Agglomerate antibodies to K groups, seed = group means.
-        hc  <- stats::hclust(stats::dist(A), method = "ward.D2")
-        grp <- stats::cutree(hc, k = K)
+        hc   <- stats::hclust(stats::dist(A), method = "ward.D2")
+        grp  <- stats::cutree(hc, k = K)
         cent <- t(vapply(sort(unique(grp)), function(g)
           colMeans(A[grp == g, , drop = FALSE]), numeric(d)))
       } else if (m < K) {
-        # Augment with k-means++ seeds from the data to reach K.
         extra <- init_kmeanspp_cpp(X, K)
         cent  <- rbind(A, extra)[seq_len(K), , drop = FALSE]
       } else {
         cent <- A
       }
-
-      # Seed assignment by affinity argmax to the seed prototypes, then Lloyd.
       assign <- as.integer(final_assignment_cpp(
         X, cent, cfg$affinityFunc, cfg$distFunc, 1L,
         alpha, c_p, p_p, Sigma_inv)$best_antibody_idx)
-      steps <- max(cfg$consolidationSteps, 10L)
-      prev  <- NULL
-      for (s in seq_len(steps)) {
-        ks <- sort(unique(assign))
-        cent <- t(vapply(ks, function(g)
-          colMeans(X[assign == g, , drop = FALSE]), numeric(d)))
-        new_assign <- as.integer(final_assignment_cpp(
-          X, cent, cfg$affinityFunc, "euclidean", 0L,
-          alpha, c_p, p_p, Sigma_inv)$assignments)
-        if (!is.null(prev) && identical(new_assign, prev)) {
-          assign <- new_assign; break
-        }
-        prev   <- new_assign
-        assign <- new_assign
-      }
-      list(antibodies  = cent,
-           assignments = as.numeric(factor(assign)))
+      private$.lloyd_refine(X, cent, assign, max(cfg$consolidationSteps, 30L),
+                            cfg, alpha, c_p, p_p, Sigma_inv, K = K)
     },
 
     # Lloyd-style consolidation of matured antibodies into data-space
-    # prototypes. Affinity maturation (clonal selection + SHM) finds where the
-    # prototypes should point, but under magnitude-blind affinities (cosine) it
-    # leaves them off the data manifold, and even Euclidean affinities do not
-    # guarantee a prototype equals the centroid of the points it wins. This
-    # runs a few k-means-style refinement steps to fix that.
+    # prototypes. Affinity maturation finds where prototypes should point,
+    # but under magnitude-blind affinities (cosine) it leaves them off the
+    # data manifold, and even Euclidean affinities do not guarantee a
+    # prototype equals the centroid of the points it wins.
     #
     # The seed assignment is by AFFINITY (argmax), not distance: a Euclidean
-    # seed over off-manifold antibodies can collapse every point onto a single
-    # far-flung antibody, whereas the affinity seed preserves the partition the
-    # network actually learned. After the first M-step the prototypes are
-    # on-manifold, so subsequent E-steps use the (guard-consistent) distFunc.
+    # seed over off-manifold antibodies can collapse every point onto one
+    # far-flung antibody, whereas the affinity seed preserves the partition
+    # the network actually learned.
     .consolidate_clusters = function(X, A, cfg, alpha, c_p, p_p, Sigma_inv) {
-      d <- ncol(X)
-      # Seed by AFFINITY (argmax) using the trained affinity: robust to
-      # off-manifold antibodies, and it preserves the partition the network
-      # learned (an affinity-blind Euclidean seed over far-flung antibodies can
-      # collapse every point onto one of them).
       seed <- final_assignment_cpp(X, A, cfg$affinityFunc, cfg$distFunc, 1L,
                                    alpha, c_p, p_p, Sigma_inv)$best_antibody_idx
-      assign <- as.integer(seed)
-      # The refinement itself is Euclidean Lloyd: the arithmetic mean is the
-      # centroid that minimizes within-cluster L2, so reassignment must also be
-      # Euclidean for the steps to be consistent and monotone. This is
-      # independent of the training affinity/distance -- the affinity drove the
-      # search; consolidation commits the prototypes to the data manifold.
-      cent <- A
+      private$.lloyd_refine(X, A, as.integer(seed), cfg$consolidationSteps,
+                            cfg, alpha, c_p, p_p, Sigma_inv)
+    },
+
+    # Euclidean Lloyd refinement from a seed partition. The arithmetic mean
+    # is the centroid that minimizes within-cluster L2, so reassignment is
+    # also Euclidean, which keeps the steps consistent and monotone. This is
+    # independent of the training affinity: the affinity drove the search,
+    # refinement commits the prototypes to the data manifold.
+    #
+    # With K set (targetK), a cluster that empties is re-seeded at the point
+    # farthest from its own centroid before each M-step, so the partition
+    # keeps exactly K clusters instead of silently losing some.
+    #
+    # The returned labels are the last E-step against the returned
+    # prototypes, and only prototypes that win points are kept, so row i of
+    # `antibodies` is cluster i and predict() on the training data
+    # reproduces `assignments`.
+    .lloyd_refine = function(X, cent, assign, steps, cfg, alpha, c_p, p_p,
+                             Sigma_inv, K = NULL) {
       prev <- NULL
-      for (s in seq_len(cfg$consolidationSteps)) {
-        ks <- sort(unique(assign))
+      for (s in seq_len(steps)) {
+        if (!is.null(K)) assign <- .fill_empty_clusters(X, assign, K)
         # M-step: each prototype is the mean of the points assigned to it.
-        cent <- t(vapply(ks, function(g)
-          colMeans(X[assign == g, , drop = FALSE]), numeric(d)))
-        # E-step: reassign points to the nearest consolidated prototype (L2).
+        cent <- .cluster_means(X, assign)
+        # E-step: reassign points to the nearest prototype (L2).
         new_assign <- as.integer(final_assignment_cpp(
           X, cent, cfg$affinityFunc, "euclidean", 0L,
           alpha, c_p, p_p, Sigma_inv)$assignments)
-        if (!is.null(prev) && identical(new_assign, prev)) {
-          assign <- new_assign
-          break
-        }
+        converged <- !is.null(prev) && identical(new_assign, prev)
         prev   <- new_assign
         assign <- new_assign
+        if (converged) break
       }
-      list(antibodies  = cent,
-           assignments = as.numeric(factor(assign)))
+      used <- sort(unique(assign))
+      if (!is.null(K) && length(used) < min(K, nrow(X))) {
+        # Ran out of steps with a cluster still empty: re-seed it and take a
+        # final M-step so the partition has exactly K clusters.
+        assign <- .fill_empty_clusters(X, assign, K)
+        return(list(antibodies  = .cluster_means(X, assign),
+                    assignments = as.numeric(assign)))
+      }
+      list(antibodies  = cent[used, , drop = FALSE],
+           assignments = as.numeric(match(assign, used)))
+    },
+
+    # Per-class antibody seeds: quota_c = max(minPerClass, round(nAntibodies *
+    # n_c / n)), drawn from class c's own observations with initMethod.
+    # Classes with no observations (unused factor levels) get none.
+    .stratified_antibodies = function(X, y, cfg) {
+      counts  <- table(y)
+      present <- names(counts)[counts > 0]
+      share   <- as.numeric(counts[present]) / sum(counts)
+      quota   <- pmax(as.integer(cfg$minPerClass),
+                      as.integer(round(cfg$nAntibodies * share)))
+      parts <- lapply(seq_along(present), function(i) {
+        Xc <- X[y == present[i], , drop = FALSE]
+        private$.initialize_antibodies(Xc, quota[i], cfg$initMethod)
+      })
+      list(A = do.call(rbind, parts), classes = rep(present, quota))
     },
 
     .initialize_antibodies = function(X, nAntibodies, method, init_lib = NULL) {
@@ -934,6 +945,156 @@ AINet <- R6::R6Class(
     }
   )
 )
+
+
+# ============================================================================
+# Internal Lloyd helpers
+# ============================================================================
+
+#' Per-cluster means, one row per label in sort(unique(assign))
+#' @keywords internal
+#' @noRd
+.cluster_means <- function(X, assign) {
+  ks <- sort(unique(assign))
+  t(vapply(ks, function(g) colMeans(X[assign == g, , drop = FALSE]),
+           numeric(ncol(X))))
+}
+
+#' Re-seed empty clusters so labels 1..K are all present
+#'
+#' Each missing label takes the point farthest (squared L2) from its own
+#' cluster mean, never emptying a singleton. This is the standard k-means fix
+#' for empty clusters and keeps a forced-K partition at exactly K.
+#' @param assign Integer labels in 1..K, possibly with gaps.
+#' @param K Number of clusters wanted. Must not exceed nrow(X).
+#' @keywords internal
+#' @noRd
+.fill_empty_clusters <- function(X, assign, K) {
+  missing <- setdiff(seq_len(K), assign)
+  for (g in missing) {
+    ks    <- sort(unique(assign))
+    cent  <- .cluster_means(X, assign)
+    own   <- cent[match(assign, ks), , drop = FALSE]
+    d2    <- rowSums((X - own)^2)
+    sizes <- tabulate(assign, nbins = K)
+    d2[sizes[assign] <= 1L] <- -Inf
+    assign[which.max(d2)] <- g
+  }
+  assign
+}
+
+
+# ============================================================================
+# Internal constructor helpers for AINet$initialize()
+# ============================================================================
+
+# Module slots, in the order they are stored on the model.
+.AINET_MODULES <- c("shm", "init", "activation", "idiotypic",
+                    "germinalCenter", "microenvironment", "memory",
+                    "classSwitcher")
+
+#' Validate AINet numeric arguments
+#' @param args Named list of AINet$initialize() arguments.
+#' @keywords internal
+#' @noRd
+.ainet_validate_args <- function(args) {
+  with(args, stopifnot(
+    "nAntibodies must be a positive integer" = is.numeric(nAntibodies) && nAntibodies >= 1,
+    "beta must be positive" = is.numeric(beta) && beta > 0,
+    "epsilon must be non-negative" = is.numeric(epsilon) && epsilon >= 0,
+    "maxIter must be a positive integer" = is.numeric(maxIter) && maxIter >= 1,
+    "k must be a positive integer" = is.numeric(k) && k >= 1,
+    "mutationDecay must be in (0, 1]" = is.numeric(mutationDecay) && mutationDecay > 0 && mutationDecay <= 1,
+    "mutationMin must be non-negative" = is.numeric(mutationMin) && mutationMin >= 0,
+    "maxClones must be non-negative" = is.numeric(maxClones) && length(maxClones) == 1L && !is.na(maxClones) && maxClones >= 0
+  ))
+  if (!is.null(args$targetK)) {
+    stopifnot("targetK must be a positive integer" =
+                is.numeric(args$targetK) && length(args$targetK) == 1L &&
+                args$targetK >= 1)
+  }
+  stopifnot("minPerClass must be a non-negative integer" =
+              is.numeric(args$minPerClass) && length(args$minPerClass) == 1L &&
+              args$minPerClass >= 0)
+  q <- args$epsilonQuantile
+  if (!is.null(q)) {
+    stopifnot("epsilonQuantile must be in (0, 1)" =
+                is.numeric(q) && length(q) == 1L && q > 0 && q < 1)
+  }
+  invisible(TRUE)
+}
+
+#' Resolve and align the affinity and distance metrics
+#'
+#' Clonal selection matures antibodies to maximize `affinityFunc`, but cluster
+#' assignment uses `distFunc`. If the two disagree on geometry the model
+#' optimizes one space and is read out in another. The worst case is cosine
+#' affinity (scores angle only, leaves antibody magnitude a free random walk)
+#' paired with a Euclidean-family distance: antibodies drift far off the data
+#' manifold and every point collapses onto one of them. Align the distance to
+#' the affinity's natural metric and warn rather than silently returning a
+#' degenerate clustering.
+#' @return list(affinityFunc, distFunc)
+#' @keywords internal
+#' @noRd
+.ainet_align_metric <- function(affinityFunc, distFunc) {
+  affinityFunc <- match.arg(affinityFunc, c("gaussian", "laplace",
+                                            "polynomial", "cosine", "hamming"))
+  distFunc     <- match.arg(distFunc, c("euclidean", "manhattan",
+                                        "minkowski", "cosine",
+                                        "mahalanobis", "hamming"))
+  natural_dist <- c(gaussian = "euclidean", laplace = "manhattan",
+                    polynomial = "euclidean", cosine = "cosine",
+                    hamming = "hamming")[[affinityFunc]]
+  if ((affinityFunc == "cosine") != (distFunc == "cosine")) {
+    warning(sprintf(
+      "affinityFunc='%s' and distFunc='%s' use inconsistent geometries; %s. Set distFunc='%s' to silence this.",
+      affinityFunc, distFunc,
+      sprintf("overriding distFunc to '%s'", natural_dist),
+      natural_dist), call. = FALSE)
+    distFunc <- natural_dist
+  }
+  list(affinityFunc = affinityFunc, distFunc = distFunc)
+}
+
+#' Build the AINet config list
+#' @param args Named list of AINet$initialize() arguments.
+#' @param metric Output of .ainet_align_metric().
+#' @keywords internal
+#' @noRd
+.ainet_build_config <- function(args, metric) {
+  list(
+    nAntibodies        = as.integer(args$nAntibodies),
+    beta               = args$beta,
+    epsilon            = args$epsilon,
+    maxIter            = args$maxIter,
+    k                  = args$k,
+    affinityFunc       = metric$affinityFunc,
+    distFunc           = metric$distFunc,
+    affinityParams     = args$affinityParams,
+    mutationDecay      = args$mutationDecay,
+    mutationMin        = args$mutationMin,
+    maxClones          = args$maxClones,
+    stopTolerance      = args$stopTolerance,
+    noImprovementLimit = args$noImprovementLimit,
+    initMethod         = match.arg(args$initMethod,
+                                   c("sample", "random", "random_uniform",
+                                     "kmeans++")),
+    consolidate        = isTRUE(args$consolidate),
+    consolidationSteps = as.integer(args$consolidationSteps),
+    scale              = match.arg(args$scale,
+                                   c("none", "zscore", "robust", "arcsinh")),
+    scaleCofactor      = args$scaleCofactor,
+    targetK            = if (is.null(args$targetK)) NULL else as.integer(args$targetK),
+    epsilonQuantile    = args$epsilonQuantile,
+    coverageBoost      = isTRUE(args$coverageBoost),
+    coverageQuantile   = args$coverageQuantile,
+    minPerClass        = as.integer(args$minPerClass),
+    scaling            = NULL,  # populated at fit() with learned stats
+    verbose            = args$verbose
+  )
+}
+
 
 
 # ============================================================================

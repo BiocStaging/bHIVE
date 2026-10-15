@@ -72,10 +72,14 @@ discards the cluster and its members from subsequent layers. Ignored when
 
 \item{distance}{Distance metric for medoid calculation, e.g. "euclidean".}
 
-\item{verbose}{Logical, if TRUE prints progress at each layer.}
+\item{verbose}{Logical, if TRUE reports progress at each layer with
+\code{message()}.}
 
-\item{refine}{Logical, if TRUE apply gradient-based refinement via 
-\code{refineB()} to each layer's prototypes.}
+\item{refine}{Logical, if TRUE apply gradient-based refinement via
+\code{refineB()} to each layer's antibodies, in the scaled space the layer
+was trained in. Refinement polishes the reported antibodies and the
+final layer's model. The collapse into the next layer's prototypes uses
+the bHIVE assignments.}
 
 \item{refineLoss}{Character specifying the loss for \code{refineB()}
 (e.g. "categorical_crossentropy", "mae").}
@@ -105,17 +109,27 @@ squared gradients (if using RMSProp).}
 \item{...}{Additional arguments passed to \code{bHIVE}.}
 }
 \value{
-A list of length \code{layers}. Each element (layer) includes:
+A list of length \code{layers}. Each element (layer) is the
+  \code{\link{bHIVE}} result for that layer plus:
   \itemize{
-    \item \code{antibodies}: The prototypes in that layer.
-    \item \code{assignments}: Antibody index (in that layer) for each row
-    of \code{current_X}.
+    \item \code{antibodies}: The antibodies learned in that layer.
+    \item \code{assignments}: For each row of the layer's input (the
+    original rows for layer 1, the previous layer's prototypes after that),
+    the cluster ID or, for classification, the class label.
+    \item \code{prototypes}: The collapsed prototypes that feed the next
+    layer, one row per cluster. Row \code{k} summarizes the original
+    observations with \code{membership == k}.
     \item \code{membership}: For each \strong{original} row in \code{X},
-    which cluster/antibody it belongs to in this layer.
-    \item \code{predictions}: If classification, predicted label for each
-    original row in \code{X}.
+    the row of \code{prototypes} it belongs to (\code{NA} if its cluster
+    was dropped).
+    \item \code{predictions}: For classification, the predicted label for
+    each original row: the majority label of its cluster.
+    \item \code{model}: Final layer only. The fitted \code{\link{AINet}}
+    model, for labeling new observations with \code{$predict()}.
     \item \code{task}: The specified task.
   }
+  For classification, each layer collapses observations by the antibody
+  that labeled them, so a layer keeps several prototypes per class.
 }
 \description{
 The \code{honeycombHIVE} function implements a multilayer artificial immune

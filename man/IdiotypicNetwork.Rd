@@ -3,6 +3,10 @@
 \name{IdiotypicNetwork}
 \alias{IdiotypicNetwork}
 \title{IdiotypicNetwork}
+\value{
+An \code{\link[R6]{R6Class}} generator.
+  \code{IdiotypicNetwork$new()} returns an \code{IdiotypicNetwork} object.
+}
 \description{
 Implements Jerne's idiotypic network theory for antibody
 repertoire regulation. Replaces crude epsilon-threshold suppression with
@@ -24,13 +28,33 @@ This is the single most novel contribution of the overhauled bHIVE package.
 No existing AIS implementation uses idiotypic network dynamics for
 repertoire regulation.
 }
+\section{Experimental}{
+
+The activation rule is applied to each antibody pair and the responses are
+summed: every neighbor whose affinity falls outside
+\code{[theta_low, theta_high]} counts as one unit of suppression. In a
+small, tight repertoire this culls crowded and isolated antibodies as
+intended (see the example). In a large or spread-out repertoire most pairs
+are far apart, their affinity is near zero, and every antibody is
+suppressed. \code{regulate()} then warns and leaves the repertoire
+unchanged, and \code{\link{AINet}} keeps the top 10\% by population and
+reports it with a message. Treat the module as experimental and check that
+antibodies survive on your data. A field-based form, in which the
+activation acts on the total stimulation each antibody receives, is
+planned.
+}
+
 \examples{
-# Create and run idiotypic regulation
-idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
-A <- matrix(rnorm(50), nrow = 10, ncol = 5)
+# Four antibodies with pairwise affinity 0.25 (inside the default
+# activation window) stimulate each other and survive. A fifth, far from
+# the rest, is under-stimulated and dies.
+a <- sqrt(log(4) / 2)
+A <- rbind(cbind(diag(4) * a, 0), c(0, 0, 0, 0, 10))
 rep <- ImmuneRepertoire$new(A)
-idi$regulate(rep, "gaussian", list(alpha = 0.5))
+idi <- IdiotypicNetwork$new(theta_low = 0.01, theta_high = 0.5)
+idi$regulate(rep, "gaussian", list(alpha = 1))
 print(idi)
+rep$size()
 
 }
 \section{Public fields}{
@@ -61,7 +85,7 @@ print(idi)
 \item \href{#method-IdiotypicNetwork-regulate}{\code{IdiotypicNetwork$regulate()}}
 \item \href{#method-IdiotypicNetwork-get_network}{\code{IdiotypicNetwork$get_network()}}
 \item \href{#method-IdiotypicNetwork-get_population}{\code{IdiotypicNetwork$get_population()}}
-\item \href{#method-IdiotypicNetwork-print}{\code{IdiotypicNetwork$print()}}
+\item \href{#method-IdiotypicNetwork-format}{\code{IdiotypicNetwork$format()}}
 \item \href{#method-IdiotypicNetwork-clone}{\code{IdiotypicNetwork$clone()}}
 }
 }
@@ -158,12 +182,13 @@ Numeric vector or NULL if not yet run.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-IdiotypicNetwork-print"></a>}}
-\if{latex}{\out{\hypertarget{method-IdiotypicNetwork-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-IdiotypicNetwork-format"></a>}}
+\if{latex}{\out{\hypertarget{method-IdiotypicNetwork-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{IdiotypicNetwork$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{IdiotypicNetwork$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -172,6 +197,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

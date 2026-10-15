@@ -3,6 +3,10 @@
 \name{ImmuneRepertoire}
 \alias{ImmuneRepertoire}
 \title{ImmuneRepertoire}
+\value{
+An \code{\link[R6]{R6Class}} generator.
+  \code{ImmuneRepertoire$new()} returns an \code{ImmuneRepertoire} object.
+}
 \description{
 R6 class representing a collection of antibodies (immune cells)
 with associated metadata. Core data structure for bHIVE algorithms.
@@ -50,7 +54,7 @@ rep$size()  # fewer antibodies after suppression
 \item \href{#method-ImmuneRepertoire-add}{\code{ImmuneRepertoire$add()}}
 \item \href{#method-ImmuneRepertoire-age_all}{\code{ImmuneRepertoire$age_all()}}
 \item \href{#method-ImmuneRepertoire-as_matrix}{\code{ImmuneRepertoire$as_matrix()}}
-\item \href{#method-ImmuneRepertoire-print}{\code{ImmuneRepertoire$print()}}
+\item \href{#method-ImmuneRepertoire-format}{\code{ImmuneRepertoire$format()}}
 \item \href{#method-ImmuneRepertoire-clone}{\code{ImmuneRepertoire$clone()}}
 }
 }
@@ -254,12 +258,13 @@ Numeric matrix (nAntibodies x nFeatures).
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-ImmuneRepertoire-print"></a>}}
-\if{latex}{\out{\hypertarget{method-ImmuneRepertoire-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary.
+\if{html}{\out{<a id="method-ImmuneRepertoire-format"></a>}}
+\if{latex}{\out{\hypertarget{method-ImmuneRepertoire-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ImmuneRepertoire$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ImmuneRepertoire$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -268,6 +273,9 @@ Print summary.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

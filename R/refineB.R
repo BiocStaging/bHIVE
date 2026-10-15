@@ -37,8 +37,10 @@
 #' @param A Numeric matrix (nAb x d) of antibody/prototype positions.
 #' @param X Matrix or data frame (nSamples x d) of feature data.
 #' @param y Optional. Factor (classification) or NULL (clustering).
-#' @param assignments Integer or character vector (length = nSamples), specifying the antibody index
-#'                    (or label) each sample belongs to.
+#' @param assignments Vector (length = nSamples) giving the antibody each
+#'   sample belongs to. Numeric values are row indices of \code{A}. Character
+#'   or factor values are matched to \code{rownames(A)} when every value is a
+#'   row name, and otherwise mapped to rows in order of first appearance.
 #' @param task One of \code{c("clustering", "classification")}.
 #' @param loss One of \code{c("categorical_crossentropy", "binary_crossentropy",
 #'   "kullback_leibler", "cosine", "mae")}.
@@ -46,7 +48,8 @@
 #' @param lr Numeric. Learning rate for each update.
 #' @param push_away Logical (for classification). Whether to push prototypes away
 #'   from differently-labeled samples.
-#' @param verbose Logical. If \code{TRUE}, prints progress messages each iteration.
+#' @param verbose Logical. If \code{TRUE}, reports progress with
+#'   \code{message()} each step.
 #' @param optimizer One of \code{c("sgd", "momentum", "adagrad", "adam", "rmsprop")}. Specifies the
 #'   gradient-based optimization approach.
 #' @param momentum_coef Numeric. Momentum coefficient (used if \code{optimizer=="momentum"}).
@@ -68,180 +71,147 @@
 #' y <- iris$Species
 #' res <- bHIVE(X, y, task = "classification", nAntibodies = 10,
 #'              maxIter = 5, verbose = FALSE)
-#' assignments <- as.integer(factor(res$assignments,
-#'                                  levels = unique(res$assignments)))
+#' # antibody_index gives the antibody (row of res$antibodies) that labeled
+#' # each sample
 #' A_refined <- refineB(res$antibodies, X, y = y,
-#'                      assignments = assignments,
+#'                      assignments = res$antibody_index,
 #'                      task = "classification",
 #'                      loss = "categorical_crossentropy", optimizer = "adam",
 #'                      steps = 3, lr = 0.01, verbose = FALSE)
 #' dim(A_refined)
 #'
 #' @export
-refineB <- function(A,
-                    X,
-                    y = NULL,
-                    assignments,
+refineB <- function(A, X, y = NULL, assignments,
                     task = c("clustering", "classification"),
                     loss = c("categorical_crossentropy", "binary_crossentropy",
                              "kullback_leibler", "cosine", "mae"),
-                    steps = 5,
-                    lr = 0.01,
-                    push_away = TRUE,
-                    verbose = TRUE,
-                    optimizer = c("sgd", "momentum", "adagrad", "adam", "rmsprop"),
-                    momentum_coef = 0.9,
-                    beta1 = 0.9,
-                    beta2 = 0.999,
-                    rmsprop_decay = 0.9,
-                    epsilon = 1e-8) {
-  
-  task <- match.arg(task)
-  loss <- match.arg(loss)
+                    steps = 5, lr = 0.01, push_away = TRUE, verbose = TRUE,
+                    optimizer = c("sgd", "momentum", "adagrad", "adam",
+                                  "rmsprop"),
+                    momentum_coef = 0.9, beta1 = 0.9, beta2 = 0.999,
+                    rmsprop_decay = 0.9, epsilon = 1e-8) {
+  task      <- match.arg(task)
+  loss      <- match.arg(loss)
   optimizer <- match.arg(optimizer)
-  
-  # Ensure X and A are numeric matrices
-  if (!is.matrix(X)) {
-    X <- as.matrix(X)
-  }
-  if (!is.numeric(X)) {
-    stop("'X' must be numeric.")
-  }
-  if (!is.matrix(A) || !is.numeric(A)) {
-    A <- as.matrix(A)
-  }
-  
-  nAb <- nrow(A)
-  d   <- ncol(A)
-  n   <- nrow(X)
-  
-  if (ncol(X) != d) {
-    stop("Number of columns in 'X' must match the number of columns in 'A'.")
-  }
-  if (length(assignments) != n) {
-    stop("Length of 'assignments' must match nrow(X).")
-  }
-  
-  # Convert assignments to numeric indices if needed (e.g., if assignments are characters)
-  unique_assignments <- unique(assignments)
-  assignments <- match(assignments, unique_assignments)
-  nLabels <- length(unique_assignments)
-  
-  if (nLabels > nAb) {
-    if (verbose) {
-      message(sprintf("Number of unique assignments (%d) exceeds the number of 
-                      ntibodies (nAb = %d).", nLabels, nAb))
-    }
-  }
-  if (nLabels < nAb && verbose) {
-    message(sprintf("Number of prototypes (nAb = %d) exceeds unique labels 
-                    (%d). Extra prototypes will not be assigned data points.",
-                    nAb, nLabels))
-  }
-  if (any(assignments < 1 | assignments > nAb, na.rm = TRUE)) {
-    invalid_assignments <- assignments[assignments < 1 | assignments > nAb]
-    stop(sprintf("'assignments' contains invalid values: %s. Valid range is 1..%d.",
-                 paste(unique(invalid_assignments), collapse = ", "), nAb))
-  }
-  
-  # Build a list of indices per antibody for potential classification tasks.
-  samples_by_ab <- vector("list", nAb)
-  for (i in seq_len(n)) {
-    j <- assignments[i]
-    samples_by_ab[[j]] <- c(samples_by_ab[[j]], i)
-  }
-  
-  # For classification: determine the dominant label per antibody.
-  ab_label <- rep(NA_character_, nAb)
+
+  inp <- .refineB_check(A, X, assignments, verbose)
+  A <- inp$A
+  X <- inp$X
+  assignments <- inp$assignments
+
+  ab_label <- rep(NA_character_, nrow(A))
   if (task == "classification") {
-    if (!is.factor(y)) {
-      y <- as.factor(y)
-    }
-    for (ab_idx in seq_len(nAb)) {
-      pts <- samples_by_ab[[ab_idx]]
-      if (length(pts) == 0) {
-        ab_label[ab_idx] <- NA
-      } else {
-        tbl <- table(y[pts])
-        ab_label[ab_idx] <- names(tbl)[which.max(tbl)]
-      }
-    }
+    if (!is.factor(y)) y <- as.factor(y)
+    ab_label <- .refineB_ab_labels(y, assignments, nrow(A))
   }
-  
-  # Initialize optimizer state variables as needed.
-  if (optimizer == "momentum") {
-    velocity <- matrix(0, nrow = nAb, ncol = d)
-  } else if (optimizer == "adagrad") {
-    acc <- matrix(0, nrow = nAb, ncol = d)
-  } else if (optimizer == "adam") {
-    m <- matrix(0, nrow = nAb, ncol = d)
-    v <- matrix(0, nrow = nAb, ncol = d)
-    t_count <- rep(0, nAb)
-  } else if (optimizer == "rmsprop") {
-    rmsprop_cache <- matrix(0, nrow = nAb, ncol = d)
-  }
-  
-  # Main refinement loop over steps.
+  step <- .refineB_optimizer(optimizer, nrow(A), ncol(A), lr, momentum_coef,
+                             beta1, beta2, rmsprop_decay, epsilon)
+
   for (st in seq_len(steps)) {
-    if (verbose) {
-      message(sprintf("Refinement step %d/%d", st, steps))
-    }
-    # Shuffle sample indices.
-    idx_shuf <- sample.int(n)
-    for (i in idx_shuf) {
+    if (verbose) message(sprintf("Refinement step %d/%d", st, steps))
+    for (i in sample.int(nrow(X))) {
       j <- assignments[i]
-      
-      # Skip invalid assignments.
-      if (is.na(j) || j < 1 || j > nAb) next
-      
-      # Get the data point (ensure it's a numeric vector of length d).
-      x_i <- as.numeric(X[i, ])
-      if (length(x_i) != d) {
-        stop(sprintf("x_i is not the correct length: expected %d, got %d", d, length(x_i)))
-      }
-      
-      # For classification, determine if the current data point shares the dominant label.
+      # For classification, pull toward samples that share the antibody's
+      # dominant label and (optionally) push away from the rest.
       same_label <- NA
       if (task == "classification" && !is.na(ab_label[j])) {
         same_label <- (y[i] == ab_label[j])
       }
-      
-      # Compute the gradient using your helper function.
-      grad <- .update_prototype(
-        ab_vec      = A[j, ],
-        x_i         = x_i,
-        same_label  = same_label,
-        task        = task,
-        loss        = loss,
-        push_away   = push_away
-      )
-      
-      if (length(grad) != d) {
-        stop(sprintf(".update_prototype returned a gradient of length %d, expected %d", length(grad), d))
-      }
-      
-      # Optimizer-specific update:
-      if (optimizer == "sgd") {
-        A[j, ] <- A[j, ] + lr * grad
-      } else if (optimizer == "momentum") {
-        velocity[j, ] <- momentum_coef * velocity[j, ] + grad
-        A[j, ] <- A[j, ] + lr * velocity[j, ]
-      } else if (optimizer == "adagrad") {
-        acc[j, ] <- acc[j, ] + grad^2
-        A[j, ] <- A[j, ] + lr * grad / (sqrt(acc[j, ]) + epsilon)
-      } else if (optimizer == "adam") {
-        m[j, ] <- beta1 * m[j, ] + (1 - beta1) * grad
-        v[j, ] <- beta2 * v[j, ] + (1 - beta2) * (grad^2)
-        t_count[j] <- t_count[j] + 1
-        m_hat <- m[j, ] / (1 - beta1^(t_count[j]))
-        v_hat <- v[j, ] / (1 - beta2^(t_count[j]))
-        A[j, ] <- A[j, ] + lr * m_hat / (sqrt(v_hat) + epsilon)
-      } else if (optimizer == "rmsprop") {
-        rmsprop_cache[j, ] <- rmsprop_decay * rmsprop_cache[j, ] + (1 - rmsprop_decay) * (grad^2)
-        A[j, ] <- A[j, ] + lr * grad / (sqrt(rmsprop_cache[j, ]) + epsilon)
-      }
+      grad <- .update_prototype(A[j, ], as.numeric(X[i, ]), same_label,
+                                task = task, loss = loss,
+                                push_away = push_away)
+      A[j, ] <- A[j, ] + step(j, grad)
     }
   }
-  
-  return(A)
+  A
+}
+
+
+# ============================================================================
+# Internal helpers
+# ============================================================================
+
+#' Validate refineB inputs and resolve assignments to row indices of A
+#' @return list(A, X, assignments) with numeric matrices and integer indices.
+#' @keywords internal
+#' @noRd
+.refineB_check <- function(A, X, assignments, verbose) {
+  if (!is.matrix(X)) X <- as.matrix(X)
+  if (!is.numeric(X)) stop("'X' must be numeric.")
+  if (!is.matrix(A) || !is.numeric(A)) A <- as.matrix(A)
+  nAb <- nrow(A)
+  if (ncol(X) != ncol(A)) {
+    stop("Number of columns in 'X' must match the number of columns in 'A'.")
+  }
+  if (length(assignments) != nrow(X)) {
+    stop("Length of 'assignments' must match nrow(X).")
+  }
+  if (is.numeric(assignments)) {
+    idx <- as.integer(assignments)
+  } else if (!is.null(rownames(A)) &&
+             all(as.character(assignments) %in% rownames(A))) {
+    idx <- match(as.character(assignments), rownames(A))
+  } else {
+    idx <- match(assignments, unique(assignments))
+  }
+  bad <- is.na(idx) | idx < 1L | idx > nAb
+  if (any(bad)) {
+    stop(sprintf("'assignments' contains invalid values: %s. Valid range is 1..%d.",
+                 paste(unique(assignments[bad]), collapse = ", "), nAb))
+  }
+  n_used <- length(unique(idx))
+  if (verbose && n_used < nAb) {
+    message(sprintf("%d of %d prototypes have no assigned samples and will not move.",
+                    nAb - n_used, nAb))
+  }
+  list(A = A, X = X, assignments = idx)
+}
+
+#' Dominant class label of the samples assigned to each antibody
+#' @keywords internal
+#' @noRd
+.refineB_ab_labels <- function(y, assignments, nAb) {
+  vapply(seq_len(nAb), function(j) {
+    pts <- which(assignments == j)
+    if (length(pts) == 0) return(NA_character_)
+    tbl <- table(y[pts])
+    names(tbl)[which.max(tbl)]
+  }, character(1))
+}
+
+#' Build a per-antibody update function for the chosen optimizer
+#'
+#' Returns step(j, grad), which updates the optimizer state for antibody j and
+#' returns the displacement to add to A[j, ]. State lives in an environment
+#' shared by the returned function.
+#' @keywords internal
+#' @noRd
+.refineB_optimizer <- function(optimizer, nAb, d, lr, momentum_coef, beta1,
+                               beta2, rmsprop_decay, epsilon) {
+  st <- new.env(parent = emptyenv())
+  st$s1 <- matrix(0, nrow = nAb, ncol = d)  # velocity / accumulator / 1st moment
+  st$s2 <- matrix(0, nrow = nAb, ncol = d)  # 2nd moment (Adam)
+  st$t  <- rep(0, nAb)
+  switch(optimizer,
+    sgd = function(j, g) lr * g,
+    momentum = function(j, g) {
+      st$s1[j, ] <- momentum_coef * st$s1[j, ] + g
+      lr * st$s1[j, ]
+    },
+    adagrad = function(j, g) {
+      st$s1[j, ] <- st$s1[j, ] + g^2
+      lr * g / (sqrt(st$s1[j, ]) + epsilon)
+    },
+    adam = function(j, g) {
+      st$s1[j, ] <- beta1 * st$s1[j, ] + (1 - beta1) * g
+      st$s2[j, ] <- beta2 * st$s2[j, ] + (1 - beta2) * (g^2)
+      st$t[j] <- st$t[j] + 1
+      m_hat <- st$s1[j, ] / (1 - beta1^(st$t[j]))
+      v_hat <- st$s2[j, ] / (1 - beta2^(st$t[j]))
+      lr * m_hat / (sqrt(v_hat) + epsilon)
+    },
+    rmsprop = function(j, g) {
+      st$s1[j, ] <- rmsprop_decay * st$s1[j, ] + (1 - rmsprop_decay) * (g^2)
+      lr * g / (sqrt(st$s1[j, ]) + epsilon)
+    })
 }

@@ -165,3 +165,57 @@ test_that("refineB: Optimizer variants for clustering", {
     expect_equal(dim(result), dim(A))
   }
 })
+
+test_that("refineB: numeric assignments index rows of A directly", {
+  # Assignments that first appear as 2, 1 used to be re-indexed by first
+  # appearance, so sample 1 (assigned to antibody 2) moved antibody 1.
+  X <- matrix(c(10, 10, 0, 0), ncol = 2, byrow = TRUE)
+  A <- matrix(c(0, 0, 9, 9), ncol = 2, byrow = TRUE)
+  set.seed(1)
+  out <- refineB(A, X, assignments = c(2, 1), task = "clustering",
+                 steps = 1, lr = 0.5, verbose = FALSE)
+  expect_equal(out[1, ], c(0, 0))     # antibody 1 sits on its sample
+  expect_equal(out[2, ], c(9.5, 9.5)) # antibody 2 pulled toward (10, 10)
+})
+
+test_that("refineB: character assignments can name rows of A", {
+  X <- matrix(c(10, 10, 0, 0), ncol = 2, byrow = TRUE)
+  A <- matrix(c(0, 0, 9, 9), ncol = 2, byrow = TRUE,
+              dimnames = list(c("a", "b"), NULL))
+  set.seed(1)
+  out <- refineB(A, X, assignments = c("b", "a"), task = "clustering",
+                 steps = 1, lr = 0.5, verbose = FALSE)
+  expect_equal(unname(out[2, ]), c(9.5, 9.5))
+})
+
+test_that("refineB: progress is reported with message()", {
+  X <- as.matrix(iris[1:10, 1:4])
+  A <- X[1:2, ]
+  expect_message(refineB(A, X, assignments = rep(1:2, 5), steps = 1,
+                         verbose = TRUE), "Refinement step 1/1")
+})
+
+test_that("refineB: accepts data frames, character y and label assignments", {
+  X <- iris[1:20, 1:4]
+  A <- as.matrix(X[c(1, 11), ])
+  labs <- rep(c("left", "right"), each = 10)  # not row names of A
+  set.seed(2)
+  msgs <- capture_messages(
+    out <- refineB(A, X, y = as.character(iris$Species[1:20]),
+                   assignments = labs, task = "classification",
+                   steps = 1, verbose = TRUE))
+  expect_equal(dim(out), dim(A))
+  expect_true(any(grepl("Refinement step", msgs)))
+  expect_error(refineB(A, X, assignments = 1:3), "Length of 'assignments'")
+  expect_error(refineB(A, matrix(letters[1:8], 2), assignments = 1:2),
+               "'X' must be numeric")
+})
+
+test_that("refineB: reports antibodies with no samples", {
+  X <- as.matrix(iris[1:10, 1:4])
+  A <- X[1:3, ]
+  msgs <- capture_messages(
+    refineB(A, X, y = iris$Species[1:10], assignments = rep(1, 10),
+            task = "classification", steps = 1, verbose = TRUE))
+  expect_true(any(grepl("2 of 3 prototypes have no assigned samples", msgs)))
+})

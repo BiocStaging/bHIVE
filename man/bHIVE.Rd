@@ -2,9 +2,14 @@
 % Please edit documentation in R/bHiVE.R
 \name{bHIVE}
 \alias{bHIVE}
+\alias{bHIVE,ANY-method}
+\alias{bHIVE,SummarizedExperiment-method}
+\alias{bHIVE,SingleCellExperiment-method}
 \title{bHIVE: B-cell Hybrid Immune Variant Engine}
 \usage{
-bHIVE(
+bHIVE(X, ...)
+
+\S4method{bHIVE}{ANY}(
   X,
   y = NULL,
   task = NULL,
@@ -28,72 +33,95 @@ bHIVE(
   verbose = TRUE,
   ...
 )
+
+\S4method{bHIVE}{SummarizedExperiment}(X, y = NULL, ..., assay.type = "logcounts", name = "bHIVE")
+
+\S4method{bHIVE}{SingleCellExperiment}(
+  X,
+  y = NULL,
+  ...,
+  assay.type = "logcounts",
+  use.dimred = NULL,
+  name = "bHIVE"
+)
 }
 \arguments{
 \item{X}{A numeric matrix or data frame of input features, with rows as
-observations and columns as features.}
+observations and columns as features. Or a SummarizedExperiment or
+SingleCellExperiment with features in rows and cells in columns.}
+
+\item{...}{Additional arguments forwarded to \code{\link{AINet}}, including
+immunology modules (\code{shm}, \code{idiotypic}, \code{germinalCenter},
+\code{microenvironment}, \code{activation}, \code{memory},
+\code{classSwitcher}, \code{init}), \code{consolidate} /
+\code{consolidationSteps}, \code{coverageBoost} and, for classification,
+\code{minPerClass} (antibodies seeded per class, default 5). For the
+SummarizedExperiment methods, all arguments of the matrix method.}
 
 \item{y}{Optional. A factor target vector for classification. If NULL,
-clustering will be performed.}
+clustering will be performed. For SummarizedExperiment input, \code{y} may
+also be the name of a \code{colData()} column holding the labels.}
 
 \item{task}{Character. Specifies the task to perform: \code{"clustering"} or
 \code{"classification"}. If NULL, it is inferred based on \code{y}.}
 
 \item{nAntibodies}{Integer. The initial population size of antibodies.}
 
-\item{beta}{Numeric. Clone multiplier (controls how many clones are 
+\item{beta}{Numeric. Clone multiplier (controls how many clones are
 generated for top-matching antibodies).}
 
-\item{epsilon}{Numeric. Similarity threshold used in network suppression; 
+\item{epsilon}{Numeric. Similarity threshold used in network suppression;
 antibodies closer than \code{epsilon} are considered redundant.}
 
-\item{maxIter}{Integer. Maximum number of iterations to run the AI-Net 
+\item{maxIter}{Integer. Maximum number of iterations to run the AI-Net
 algorithm.}
 
-\item{affinityFunc}{Character. Specifies the affinity (similarity) function 
-to use for antibody-data matching. One of \code{"gaussian"}, \code{"laplace"}, 
+\item{affinityFunc}{Character. Specifies the affinity (similarity) function
+to use for antibody-data matching. One of \code{"gaussian"}, \code{"laplace"},
 \code{"polynomial"}, \code{"cosine"}, or \code{"hamming"}.}
 
-\item{distFunc}{Character. Specifies the distance function for clustering 
-and suppression. One of \code{"euclidean"}, \code{"manhattan"}, 
-\code{"minkowski"}, \code{"cosine"}, \code{"mahalanobis"}, 
+\item{distFunc}{Character. Specifies the distance function for clustering
+and suppression. One of \code{"euclidean"}, \code{"manhattan"},
+\code{"minkowski"}, \code{"cosine"}, \code{"mahalanobis"},
 or \code{"hamming"}.}
 
-\item{affinityParams}{A list of optional parameters for the chosen affinity 
+\item{affinityParams}{A list of optional parameters for the chosen affinity
 or distance function.
   \itemize{
-    \item \code{alpha} (for RBF or Laplace kernel),
+    \item \code{alpha} (for RBF or Laplace kernel). \code{"auto"} sets the
+    bandwidth by the median heuristic, which is recommended for
+    high-dimensional data such as mass cytometry.
     \item \code{c}, \code{p} (for polynomial kernel or Minkowski distance),
     \item \code{Sigma} (for Mahalanobis distance).
   }}
 
-\item{mutationDecay}{Numeric. Factor by which the mutation rate decays each 
+\item{mutationDecay}{Numeric. Factor by which the mutation rate decays each
 iteration (should be \eqn{\le 1.0}). Default is 1.0 (no decay).}
 
-\item{mutationMin}{Numeric. Minimum mutation rate, preventing the mutation 
+\item{mutationMin}{Numeric. Minimum mutation rate, preventing the mutation
 scale from shrinking to zero.}
 
 \item{maxClones}{Numeric. Maximum number of clones per top-matching antibody;
 defaults to \code{Inf}.}
 
-\item{stopTolerance}{Numeric. If the change in the number of antibodies 
-(repertoire size) is \eqn{\le stopTolerance} for consecutive iterations, 
+\item{stopTolerance}{Numeric. If the change in the number of antibodies
+(repertoire size) is \eqn{\le stopTolerance} for consecutive iterations,
 this may trigger the \code{noImprovementLimit}.}
 
-\item{noImprovementLimit}{Integer. Stops the algorithm early if there is no 
+\item{noImprovementLimit}{Integer. Stops the algorithm early if there is no
 further improvement in antibody count (beyond \code{stopTolerance}) for this
-many consecutive iterations. Default is \code{Inf}, meaning no early stop 
+many consecutive iterations. Default is \code{Inf}, meaning no early stop
 based on improvement.}
 
 \item{initMethod}{Character. Method for initializing antibodies. Can be:
 \itemize{
-  \item \code{"sample"} - randomly selects rows from \code{X} as initial 
+  \item \code{"sample"} - randomly selects rows from \code{X} as initial
   antibodies.
-  \item \code{"random"} - samples Gaussian noise using \code{X}'s column 
+  \item \code{"random"} - samples Gaussian noise using \code{X}'s column
   means/sds.
-  \item \code{"random_uniform"} - samples uniformly in [min, max] of each 
+  \item \code{"random_uniform"} - samples uniformly in [min, max] of each
   column.
-  \item \code{"kmeans++"} - tries a kmeans++-like initialization for 
+  \item \code{"kmeans++"} - tries a kmeans++-like initialization for
   coverage.
 }}
 
@@ -113,24 +141,42 @@ network supplies the seeds). NULL (default) keeps the emergent cluster count.}
 threshold adapts each iteration to this quantile of pairwise antibody
 distances instead of the fixed \code{epsilon}.}
 
-\item{verbose}{Logical. If \code{TRUE}, prints progress messages each
-iteration.}
+\item{verbose}{Logical. If \code{TRUE}, reports progress each iteration
+with \code{message()}.}
 
-\item{...}{Additional arguments forwarded to \code{\link{AINet}}, including
-immunology modules (\code{shm}, \code{idiotypic}, \code{germinalCenter},
-\code{microenvironment}, \code{activation}, \code{memory},
-\code{classSwitcher}, \code{init}) and \code{consolidate} /
-\code{consolidationSteps}.}
+\item{assay.type}{String or integer. The assay holding the features to
+cluster, for SummarizedExperiment input. Ignored when \code{use.dimred} is
+set.}
+
+\item{name}{String. The \code{colData()} column (and \code{metadata()}
+entry) the results are stored under.}
+
+\item{use.dimred}{String or integer. The \code{reducedDim()} embedding to
+cluster, for SingleCellExperiment input. Takes precedence over
+\code{assay.type}. Recommended for sparse single-cell RNA-seq, since an
+assay is converted to a dense matrix.}
 }
 \value{
-A list:
+For matrix or data frame input, a list:
   \itemize{
-    \item \code{antibodies}: Final antibody vectors (nAntibodies x nFeatures).
-    \item \code{assignments}:
-        - For clustering: integer cluster IDs in [1..#Antibodies].
-        - For classification: predicted labels.
+    \item \code{antibodies}: Final prototype matrix (prototypes x features),
+    in the scaled space the model was trained in.
+    \item \code{assignments}: For clustering, integer cluster IDs, where
+    cluster \code{i} is row \code{i} of \code{antibodies}. For
+    classification, the predicted class labels.
+    \item \code{antibody_classes}: Classification only. The class label of
+    each antibody.
+    \item \code{antibody_index}: Classification only. The row of
+    \code{antibodies} that labeled each observation.
+    \item \code{antibodies_unscaled}: The prototypes back-transformed to
+    the original feature units.
     \item \code{task}: The chosen task.
+    \item \code{model}: The fitted \code{\link{AINet}} object. Use
+    \code{res$model$predict(newdata)} to label new observations.
   }
+  For SummarizedExperiment or SingleCellExperiment input, \code{X} with the
+  labels added as a factor column \code{colData(X)[[name]]} and the full
+  result list above in \code{metadata(X)[[name]]}.
 }
 \description{
 Implements an artificial immune network algorithm for clustering and
@@ -138,31 +184,58 @@ classification tasks. The algorithm evolves a population of "antibodies"
 via clonal selection and mutation, applies network suppression to maintain
 diversity, and assigns data points based on affinity or distance metrics.
 }
+\details{
+\code{bHIVE()} accepts a plain matrix or data frame (observations in rows)
+or a \linkS4class{SummarizedExperiment} /
+\linkS4class{SingleCellExperiment} (features in rows, cells in columns, the
+Bioconductor convention). For the latter, the cells are clustered or
+classified using an assay or, for a SingleCellExperiment, a
+\code{reducedDim()} embedding, and the labels are stored in
+\code{colData()}. To use bHIVE through \pkg{bluster}, see
+\code{\link{bHIVEParam}}.
+}
 \examples{
 # Example 1: Clustering with the Iris dataset
 data(iris)
 X <- as.matrix(iris[, 1:4])  # Numeric features only
-res <- bHIVE(X = X, 
-             task = "clustering", 
-             nAntibodies = 30, 
-             beta = 5, 
-             epsilon = 0.01, 
-             maxIter = 20, 
-             k = 3, 
+res <- bHIVE(X = X,
+             task = "clustering",
+             nAntibodies = 30,
+             beta = 5,
+             epsilon = 0.01,
+             maxIter = 20,
+             k = 3,
              verbose = FALSE)
 table(res$assignments)
 
 # Example 2: Classification with Iris species
 y <- iris$Species
-res <- bHIVE(X = X, 
-              y = y, 
-              task = "classification", 
-              nAntibodies = 30, 
-              beta = 5, 
-              epsilon = 0.01, 
-              maxIter = 20, 
-              k = 3, 
+res <- bHIVE(X = X,
+              y = y,
+              task = "classification",
+              nAntibodies = 30,
+              beta = 5,
+              epsilon = 0.01,
+              maxIter = 20,
+              k = 3,
               verbose = FALSE)
 table(res$assignments, y)
 
+# Example 3: SingleCellExperiment input (features x cells)
+library(SingleCellExperiment)
+sce <- SingleCellExperiment(assays = list(logcounts = t(X)),
+                            colData = DataFrame(species = iris$Species))
+sce <- bHIVE(sce, targetK = 3, maxIter = 10, verbose = FALSE)
+table(sce$bHIVE, sce$species)
+
+# Cluster on an embedding, or classify with a colData column as labels
+reducedDim(sce, "PCA") <- prcomp(X)$x[, 1:2]
+sce <- bHIVE(sce, use.dimred = "PCA", name = "bHIVE_pca", verbose = FALSE)
+sce <- bHIVE(sce, y = "species", name = "bHIVE_class", verbose = FALSE)
+mean(sce$bHIVE_class == sce$species)
+
+}
+\seealso{
+\code{\link{bHIVEParam}} for \pkg{bluster} integration,
+  \code{\link{AINet}} for the underlying R6 engine.
 }

@@ -170,3 +170,130 @@ test_that("idiotypic_dynamics_cpp runs and returns expected structure", {
   expect_equal(length(result$keep), 6)
   expect_equal(dim(result$Ab_Ab_affinity), c(6, 6))
 })
+
+# ==== Values against R reference implementations ====
+
+set.seed(7)
+Xv <- matrix(rnorm(24), nrow = 6)
+Av <- matrix(rnorm(12), nrow = 3)
+Hx <- matrix(sample(0:2, 24, replace = TRUE), nrow = 6)  # integer-coded
+Ha <- matrix(sample(0:2, 12, replace = TRUE), nrow = 3)
+Z  <- matrix(0, 0, 0)
+S  <- crossprod(matrix(rnorm(40), 10)) / 10 + diag(4)
+
+# n x m matrix of f(X[i, ], A[j, ])
+ref_pairs <- function(X, A, f) {
+  outer(seq_len(nrow(X)), seq_len(nrow(A)),
+        Vectorize(function(i, j) f(X[i, ], A[j, ])))
+}
+cos_sim <- function(x, a) sum(x * a) / sqrt(sum(x^2) * sum(a^2))
+
+test_that("affinity kernels match their formulas", {
+  expect_equal(compute_affinity_matrix(Xv, Av, "gaussian", alpha = 0.7),
+               ref_pairs(Xv, Av, function(x, a) exp(-0.7 * sum((x - a)^2))))
+  expect_equal(compute_affinity_matrix(Xv, Av, "laplace", alpha = 0.7),
+               ref_pairs(Xv, Av, function(x, a) exp(-0.7 * sum(abs(x - a)))))
+  expect_equal(compute_affinity_matrix(Xv, Av, "polynomial", c = 0.5, p = 3),
+               ref_pairs(Xv, Av, function(x, a) (sum(x * a) + 0.5)^3))
+  expect_equal(compute_affinity_matrix(Xv, Av, "cosine"),
+               ref_pairs(Xv, Av, cos_sim))
+  expect_equal(compute_affinity_matrix(Hx, Ha, "hamming"),
+               ref_pairs(Hx, Ha, function(x, a) mean(x == a)))
+})
+
+test_that("cosine affinity of a zero vector is 0, not NaN", {
+  expect_equal(compute_affinity_matrix(rbind(c(0, 0, 0)), rbind(c(1, 2, 3)),
+                                       "cosine"), matrix(0))
+})
+
+test_that("distances match stats::dist() and stats::mahalanobis()", {
+  between <- function(method, ...) {
+    as.matrix(dist(rbind(Xv, Av), method = method, ...))[1:6, 7:9,
+                                                         drop = FALSE]
+  }
+  expect_equal(compute_distance_matrix(Xv, Av, "euclidean", 2, Z),
+               unname(between("euclidean")))
+  expect_equal(compute_distance_matrix(Xv, Av, "manhattan", 2, Z),
+               unname(between("manhattan")))
+  expect_equal(compute_distance_matrix(Xv, Av, "minkowski", 3, Z),
+               unname(between("minkowski", p = 3)))
+  # p = 2 takes the BLAS Euclidean path
+  expect_equal(compute_distance_matrix(Xv, Av, "minkowski", 2, Z),
+               compute_distance_matrix(Xv, Av, "euclidean", 2, Z))
+  expect_equal(compute_distance_matrix(Xv, Av, "cosine", 2, Z),
+               1 - ref_pairs(Xv, Av, cos_sim))
+  expect_equal(compute_distance_matrix(Xv, Av, "mahalanobis", 2, solve(S)),
+               sqrt(vapply(seq_len(nrow(Av)), function(j)
+                 stats::mahalanobis(Xv, Av[j, ], S), numeric(nrow(Xv)))))
+  expect_equal(compute_distance_matrix(Hx, Ha, "hamming", 2, Z),
+               ref_pairs(Hx, Ha, function(x, a) sum(x != a)))
+})
+
+test_that("pairwise distance equals the full matrix, with an exact zero diagonal", {
+  for (type in c("euclidean", "manhattan", "minkowski", "cosine",
+                 "mahalanobis")) {
+    D <- compute_pairwise_distance(Xv, type, 3, solve(S))
+    expect_equal(D, compute_distance_matrix(Xv, Xv, type, 3, solve(S)),
+                 label = type)
+    # Passing one matrix as both arguments takes BLAS's symmetric path,
+    # which used to leave ~6e-8 on the Euclidean diagonal.
+    expect_identical(diag(D), rep(0, nrow(Xv)), label = type)
+  }
+  expect_equal(compute_pairwise_distance(Hx, "hamming", 2, Z),
+               compute_distance_matrix(Hx, Hx, "hamming", 2, Z))
+})
+
+test_that("unknown metric names are rejected", {
+  expect_error(compute_affinity_matrix(Xv, Av, "rbf"),
+               "Invalid affinity type")
+  expect_error(compute_distance_matrix(Xv, Av, "chebyshev", 2, Z),
+               "Invalid distance type")
+  expect_error(network_suppression_cpp(Av, "chebyshev", 0.1, 2, Z),
+               "Invalid distance type")
+})
+
+# ==== Network suppression ====
+
+test_that("suppression removes a near-duplicate under every metric", {
+  # Row 2 is row 1 scaled by 1.0001: a near-duplicate in every geometry
+  # (its integer-coded value is identical, for Hamming). Row 3 is far from
+  # both, and orthogonal to row 1 for cosine.
+  a <- c(1, 2, 3, 4)
+  A <- rbind(a, a * 1.0001, c(-4, 3, -2, 1))
+  for (type in c("euclidean", "manhattan", "minkowski", "cosine",
+                 "mahalanobis", "hamming")) {
+    expect_identical(network_suppression_cpp(A, type, 0.01, 3, diag(4)),
+                     c(TRUE, FALSE, TRUE), label = type)
+  }
+})
+
+test_that("suppression uses the strict epsilon boundary", {
+  A <- rbind(c(0, 0), c(3, 4))  # Euclidean distance exactly 5
+  expect_identical(network_suppression_cpp(A, "euclidean", 5, 2, Z),
+                   c(TRUE, TRUE))
+  expect_identical(network_suppression_cpp(A, "euclidean", 5.0001, 2, Z),
+                   c(TRUE, FALSE))
+})
+
+test_that("cosine suppression treats zero vectors as maximally distant", {
+  A <- rbind(c(0, 0, 0), c(0, 0, 0), c(1, 1, 1))
+  expect_identical(network_suppression_cpp(A, "cosine", 0.5, 2, Z),
+                   c(TRUE, TRUE, TRUE))
+})
+
+# ==== Scalar affinity on the clonal-selection hot path ====
+
+test_that("clonal selection evaluates clones with every affinity kernel", {
+  set.seed(8)
+  A <- X[sample(150, 6), ]
+  Xi <- round(X)  # integer-coded for Hamming
+  for (af in c("gaussian", "laplace", "polynomial", "cosine", "hamming")) {
+    data <- if (af == "hamming") Xi else X
+    res <- clonal_selection_iteration_cpp(
+      if (af == "hamming") round(A) else A, data, rep(0, 150), 0L, 3L, 5.0,
+      Inf, 1.0, 0.01, 1L, af, 0.5, 1.0, 2.0, 0L,
+      "uniform", 1.0, 0.5, 1.0, 0.1, 0.9, 0.999, 1e-8, Z, Z)
+    expect_true(all(is.finite(res$A)), label = af)
+    expect_gte(nrow(res$A), 6L)
+  }
+})

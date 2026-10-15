@@ -3,6 +3,11 @@
 \name{AINet}
 \alias{AINet}
 \title{AINet}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{AINet$new()} returns
+  an \code{AINet} object. Call \code{$fit()} on it to train, then
+  \code{$predict()} to label new data.
+}
 \description{
 R6 implementation of the Artificial Immune Network algorithm.
 This is the core bHIVE algorithm using C++ backends for performance-critical
@@ -40,8 +45,8 @@ preds <- model2$predict(X[1:10, ])
 \if{html}{\out{
 <details open><summary>Inherited methods</summary>
 <ul>
+<li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="format"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-format'><code>bHIVE::ImmuneAlgorithm$format()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="predict"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-predict'><code>bHIVE::ImmuneAlgorithm$predict()</code></a></span></li>
-<li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="print"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-print'><code>bHIVE::ImmuneAlgorithm$print()</code></a></span></li>
 <li><span class="pkg-link" data-pkg="bHIVE" data-topic="ImmuneAlgorithm" data-id="summary"><a href='../../bHIVE/html/ImmuneAlgorithm.html#method-ImmuneAlgorithm-summary'><code>bHIVE::ImmuneAlgorithm$summary()</code></a></span></li>
 </ul>
 </details>
@@ -75,6 +80,7 @@ Create a new AINet algorithm instance.
   epsilonQuantile = NULL,
   coverageBoost = FALSE,
   coverageQuantile = 0.05,
+  minPerClass = 5,
   shm = NULL,
   init = NULL,
   activation = NULL,
@@ -164,6 +170,16 @@ candidate prototypes for sparse populations. Default FALSE.}
 \item{\code{coverageQuantile}}{Numeric in (0, 1). Affinity-coverage tail that
 defines "poorly covered" points for \code{coverageBoost}. Default 0.05.}
 
+\item{\code{minPerClass}}{Integer. Classification only. Antibodies are seeded
+per class: each class gets \code{max(minPerClass, round(nAntibodies *
+class share))} antibodies drawn from its own observations with
+\code{initMethod}, and starts with that class label. Without this, a
+rare class (for example a population of a few cells in a cytometry
+sample) often receives no antibody at all and can never be
+predicted. The total can slightly exceed \code{nAntibodies}. Set to 0
+to sample all observations without regard to class. Ignored when an
+\code{init} module is supplied. Default 5.}
+
 \item{\code{shm}}{An SHMEngine instance or NULL for default uniform mutation.}
 
 \item{\code{init}}{A VDJLibrary instance or NULL for default initialization.}
@@ -180,7 +196,8 @@ defines "poorly covered" points for \code{coverageBoost}. Default 0.05.}
 
 \item{\code{classSwitcher}}{A ClassSwitcher instance or NULL.}
 
-\item{\code{verbose}}{Logical. Print progress.}
+\item{\code{verbose}}{Logical. Report progress with \code{message()}, so it can
+be silenced with \code{suppressMessages()}.}
 }
 \if{html}{\out{</div>}}
 }

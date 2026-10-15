@@ -3,6 +3,11 @@
 \name{ImmuneAlgorithm}
 \alias{ImmuneAlgorithm}
 \title{ImmuneAlgorithm}
+\value{
+An \code{\link[R6]{R6Class}} generator. \code{ImmuneAlgorithm$new()}
+  returns an \code{ImmuneAlgorithm} object. It is an abstract base class: use
+  \code{\link{AINet}} for a fitted model.
+}
 \description{
 Abstract R6 base class for all immune-inspired algorithms.
 Subclasses must implement the \code{fit} method.
@@ -35,7 +40,7 @@ print(algo)
 \item \href{#method-ImmuneAlgorithm-new}{\code{ImmuneAlgorithm$new()}}
 \item \href{#method-ImmuneAlgorithm-fit}{\code{ImmuneAlgorithm$fit()}}
 \item \href{#method-ImmuneAlgorithm-predict}{\code{ImmuneAlgorithm$predict()}}
-\item \href{#method-ImmuneAlgorithm-print}{\code{ImmuneAlgorithm$print()}}
+\item \href{#method-ImmuneAlgorithm-format}{\code{ImmuneAlgorithm$format()}}
 \item \href{#method-ImmuneAlgorithm-summary}{\code{ImmuneAlgorithm$summary()}}
 \item \href{#method-ImmuneAlgorithm-clone}{\code{ImmuneAlgorithm$clone()}}
 }
@@ -106,12 +111,13 @@ Predictions (class labels, numeric values, or cluster IDs).
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-ImmuneAlgorithm-print"></a>}}
-\if{latex}{\out{\hypertarget{method-ImmuneAlgorithm-print}{}}}
-\subsection{Method \code{print()}}{
-Print summary of the algorithm.
+\if{html}{\out{<a id="method-ImmuneAlgorithm-format"></a>}}
+\if{latex}{\out{\hypertarget{method-ImmuneAlgorithm-format}{}}}
+\subsection{Method \code{format()}}{
+Format a short summary, one element per line. Used by
+  \code{print()}.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ImmuneAlgorithm$print(...)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ImmuneAlgorithm$format(...)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -120,6 +126,9 @@ Print summary of the algorithm.
 \item{\code{...}}{Not used.}
 }
 \if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A character vector.
 }
 }
 \if{html}{\out{<hr>}}

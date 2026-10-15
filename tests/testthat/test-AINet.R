@@ -25,6 +25,8 @@ test_that("AINet validates numeric parameters", {
   expect_error(AINet$new(mutationDecay = 0), "mutationDecay")
   expect_error(AINet$new(mutationDecay = 1.5), "mutationDecay")
   expect_error(AINet$new(mutationMin = -1), "mutationMin")
+  expect_error(AINet$new(maxClones = -1), "maxClones")
+  expect_error(AINet$new(maxClones = NA), "maxClones")
 })
 
 test_that("AINet validates affinity and distance function names", {
@@ -114,9 +116,12 @@ test_that("AINet works with all initialization methods", {
 # ==== Affinity / distance variants ====
 
 test_that("AINet works with different affinity functions", {
-  for (af in c("gaussian", "laplace", "polynomial", "cosine")) {
-    model <- AINet$new(nAntibodies = 10, maxIter = 3,
-                       affinityFunc = af, verbose = FALSE)
+  # Each affinity paired with its natural distance (see the metric guard).
+  natural <- c(gaussian = "euclidean", laplace = "manhattan",
+                   polynomial = "euclidean", cosine = "cosine")
+  for (af in names(natural)) {
+    model <- AINet$new(nAntibodies = 10, maxIter = 3, affinityFunc = af,
+                       distFunc = natural[[af]], verbose = FALSE)
     model$fit(X, task = "clustering")
     expect_true(is.matrix(model$result$antibodies))
   }
@@ -493,4 +498,312 @@ test_that("AINet runs with all five SHM strategies in classification", {
     expect_no_error(model$fit(X, y_class, task = "classification"))
     expect_equal(length(model$result$assignments), nrow(X))
   }
+})
+
+# ==== Read-out consistency: predict() reproduces the training labels ====
+
+test_that("predict() works after alpha = 'auto' and matches training", {
+  set.seed(11)
+  model <- AINet$new(nAntibodies = 20, maxIter = 10, scale = "zscore",
+                     affinityParams = list(alpha = "auto"), verbose = FALSE)
+  model$fit(X, y_class)
+  expect_true(is.numeric(model$config$kernel$alpha))
+  expect_identical(model$predict(X), model$result$assignments)
+})
+
+test_that("cluster predict() uses the metric that produced the labels", {
+  # Consolidation labels come from a Euclidean E-step, so predict() must not
+  # fall back to the training distFunc (manhattan here).
+  set.seed(12)
+  model <- AINet$new(nAntibodies = 20, maxIter = 10, affinityFunc = "laplace",
+                     distFunc = "manhattan", verbose = FALSE)
+  model$fit(X)
+  expect_equal(model$config$kernel$assignDist, "euclidean")
+  expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+  expect_equal(nrow(model$result$antibodies),
+               length(unique(model$result$assignments)))
+})
+
+test_that("unconsolidated prototypes line up with cluster labels", {
+  set.seed(13)
+  model <- AINet$new(nAntibodies = 15, maxIter = 6, consolidate = FALSE,
+                     coverageBoost = TRUE, verbose = FALSE)
+  model$fit(X)
+  expect_equal(model$config$kernel$assignDist, "euclidean")
+  expect_equal(nrow(model$result$antibodies),
+               length(unique(model$result$assignments)))
+  expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+})
+
+test_that("predict() uses the ClassSwitcher-modulated bandwidth", {
+  set.seed(14)
+  model <- AINet$new(nAntibodies = 30, maxIter = 6, verbose = FALSE,
+                     microenvironment = Microenvironment$new(),
+                     classSwitcher = ClassSwitcher$new())
+  model$fit(X, y_class)
+  expect_identical(model$predict(X), model$result$assignments)
+})
+
+test_that("classification result records the labeling antibody", {
+  set.seed(15)
+  model <- AINet$new(nAntibodies = 20, maxIter = 5, verbose = FALSE)
+  model$fit(X, y_class)
+  idx <- model$result$antibody_index
+  expect_length(idx, nrow(X))
+  expect_identical(model$result$antibody_classes[idx],
+                   model$result$assignments)
+})
+
+test_that("history resets between fits", {
+  set.seed(16)
+  model <- AINet$new(nAntibodies = 15, maxIter = 4, verbose = FALSE)
+  model$fit(X)
+  model$fit(X)
+  expect_length(model$history, 4L)
+})
+
+test_that("memory recall works with alpha = 'auto'", {
+  set.seed(17)
+  mem <- MemoryPool$new(archive_threshold = 0.001, recall_threshold = 0)
+  model <- AINet$new(nAntibodies = 15, maxIter = 3, memory = mem,
+                     affinityParams = list(alpha = "auto"), verbose = FALSE)
+  model$fit(X)
+  expect_gt(mem$size(), 0L)
+  expect_no_error(model$fit(X))
+})
+
+test_that("progress messages can be silenced with suppressMessages()", {
+  set.seed(18)
+  model <- AINet$new(nAntibodies = 10, maxIter = 3, coverageBoost = TRUE,
+                     affinityParams = list(alpha = "auto"), verbose = TRUE)
+  msgs <- capture_messages(model$fit(X))
+  expect_true(any(grepl("Iteration 1", msgs)))
+  expect_true(any(grepl("Auto bandwidth", msgs)))
+  expect_silent(suppressMessages(model$fit(X)))
+})
+
+# ==== Forced-K Lloyd refinement ====
+
+test_that(".fill_empty_clusters restores every label without emptying singletons", {
+  Xs <- rbind(c(0, 0), c(0, 1), c(10, 10), c(10, 11), c(50, 50))
+  filled <- .fill_empty_clusters(Xs, c(1L, 1L, 2L, 2L, 2L), K = 3L)
+  expect_setequal(filled, 1:3)
+  # The point farthest from its own cluster mean (the outlier) moves.
+  expect_equal(filled[5], 3L)
+  expect_identical(.fill_empty_clusters(Xs, c(1L, 2L, 3L, 3L, 3L), 3L),
+                   c(1L, 2L, 3L, 3L, 3L))
+})
+
+test_that("targetK refinement keeps exactly K clusters from a gapped seed", {
+  set.seed(19)
+  model <- AINet$new(nAntibodies = 10, maxIter = 2, verbose = FALSE)
+  model$fit(X)
+  lloyd <- model$.__enclos_env__$private$.lloyd_refine
+  cent  <- X[c(1, 51, 101, 2), ]
+  seed  <- rep(c(1L, 2L, 3L), each = 50)   # label 4 starts empty
+  out <- lloyd(X, cent, seed, steps = 30L, cfg = model$config,
+               alpha = 1, c_p = 1, p_p = 2, Sigma_inv = matrix(0, 0, 0),
+               K = 4L)
+  expect_equal(sort(unique(out$assignments)), 1:4)
+  expect_equal(nrow(out$antibodies), 4L)
+  free <- lloyd(X, cent, seed, steps = 30L, cfg = model$config,
+                alpha = 1, c_p = 1, p_p = 2, Sigma_inv = matrix(0, 0, 0))
+  expect_equal(nrow(free$antibodies), length(unique(free$assignments)))
+})
+
+test_that("targetK returns K clusters and predict() reproduces them", {
+  set.seed(20)
+  model <- AINet$new(nAntibodies = 30, maxIter = 6, targetK = 6,
+                     verbose = FALSE)
+  model$fit(X)
+  expect_equal(length(unique(model$result$assignments)), 6L)
+  expect_equal(nrow(model$result$antibodies), 6L)
+  expect_equal(as.numeric(model$predict(X)), model$result$assignments)
+})
+
+test_that("the metric guard aligns cosine and Euclidean-family geometries", {
+  expect_warning(m <- AINet$new(affinityFunc = "cosine",
+                                distFunc = "euclidean", verbose = FALSE),
+                 "inconsistent geometries")
+  expect_equal(m$config$distFunc, "cosine")
+  expect_warning(m <- AINet$new(affinityFunc = "laplace",
+                                distFunc = "cosine", verbose = FALSE),
+                 "overriding distFunc to 'manhattan'")
+  expect_equal(m$config$distFunc, "manhattan")
+  expect_no_warning(AINet$new(affinityFunc = "gaussian",
+                              distFunc = "manhattan", verbose = FALSE))
+})
+
+# ==== Paths otherwise exercised only by the local golden test ====
+
+test_that("robust and arcsinh scaling round-trip and predict consistently", {
+  for (sc in c("robust", "arcsinh")) {
+    set.seed(21)
+    m <- AINet$new(nAntibodies = 15, maxIter = 5, scale = sc, verbose = FALSE)
+    m$fit(X)
+    expect_equal(.bhive_invert_scaling(
+      .bhive_apply_scaling(X, m$config$scaling), m$config$scaling),
+      X, label = sc)
+    expect_equal(as.numeric(m$predict(X)), m$result$assignments, label = sc)
+  }
+  expect_error(.bhive_learn_scaling(X, "minmax"), "Unknown scaling method")
+})
+
+test_that("epsilonQuantile adapts suppression and falls back when tiny", {
+  set.seed(22)
+  m <- AINet$new(nAntibodies = 15, maxIter = 5, epsilonQuantile = 0.2,
+                 verbose = FALSE)
+  expect_no_error(m$fit(X))
+  priv <- m$.__enclos_env__$private
+  expect_equal(priv$.adaptive_epsilon(X[1:2, ], "euclidean", 0.5, 2,
+                                      matrix(0, 0, 0), fallback = 0.3), 0.3)
+  expect_equal(priv$.adaptive_epsilon(X[c(1, 1, 1), ], "euclidean", 0.5, 2,
+                                      matrix(0, 0, 0), fallback = 0.3), 0.3)
+  expect_error(AINet$new(epsilonQuantile = 2), "epsilonQuantile")
+})
+
+test_that("auto bandwidth only applies to distance kernels", {
+  priv <- AINet$new(verbose = FALSE)$.__enclos_env__$private
+  expect_equal(priv$.auto_bandwidth(X, "cosine"), 1)
+  expect_equal(priv$.auto_bandwidth(X[c(1, 1), ], "gaussian"), 1)
+  expect_gt(priv$.auto_bandwidth(X, "laplace"), 0)
+})
+
+test_that("Mahalanobis distance uses the supplied covariance", {
+  set.seed(23)
+  m <- AINet$new(nAntibodies = 15, maxIter = 4, distFunc = "mahalanobis",
+                 affinityParams = list(alpha = 1, Sigma = cov(X)),
+                 verbose = FALSE)
+  m$fit(X)
+  expect_equal(as.numeric(m$predict(X)), m$result$assignments)
+})
+
+test_that("the activation gate sets aside non-binding antibodies with their SHM state", {
+  set.seed(24)
+  m <- AINet$new(nAntibodies = 25, maxIter = 3, verbose = FALSE,
+                 shm = SHMEngine$new(method = "adaptive"),
+                 activation = ActivationGate$new(threshold1 = 0.5,
+                                                 threshold2 = 0.6))
+  expect_no_error(m$fit(X, iris$Species))
+  expect_identical(m$predict(X), m$result$assignments)
+})
+
+test_that("early stopping is reported with message()", {
+  set.seed(25)
+  m <- AINet$new(nAntibodies = 10, maxIter = 30, noImprovementLimit = 2,
+                 verbose = TRUE)
+  msgs <- capture_messages(m$fit(X))
+  expect_true(any(grepl("Early stopping", msgs)))
+  expect_lt(length(m$history), 30L)
+})
+
+test_that("the default maxClones = Inf clones like any cap above beta", {
+  # Converting Inf to int is undefined in C++. On x86-64 it gave INT_MIN, so
+  # no antibody was ever cloned or mutated under the default.
+  fit <- function(maxClones) {
+    set.seed(28)
+    m <- AINet$new(nAntibodies = 15, maxIter = 3, maxClones = maxClones,
+                   verbose = FALSE)
+    m$fit(X)
+    list(cells = m$repertoire$as_matrix(), seed = .Random.seed)
+  }
+  expect_identical(fit(Inf), fit(1e6))
+  expect_false(identical(fit(Inf), fit(0)))
+})
+
+test_that("targetK above the antibody count adds k-means++ seeds", {
+  set.seed(26)
+  m <- AINet$new(nAntibodies = 4, maxIter = 3, epsilon = 2, targetK = 8,
+                 verbose = FALSE)
+  m$fit(X)
+  expect_equal(length(unique(m$result$assignments)), 8L)
+})
+
+test_that("classification memory archives class labels", {
+  set.seed(27)
+  mem <- MemoryPool$new(archive_threshold = 0.001)
+  m <- AINet$new(nAntibodies = 20, maxIter = 3, memory = mem, verbose = FALSE)
+  m$fit(X, iris$Species)
+  expect_identical(m$repertoire$metadata$class_label,
+                   m$result$antibody_classes)
+})
+
+# ==== Class-stratified seeding ====
+
+# Two large classes and a class of 6 observations that sits next to big1,
+# the way rare cytometry populations sit next to related abundant ones.
+imbalanced <- function() {
+  set.seed(40)
+  X <- rbind(matrix(rnorm(400, 0, 0.5), ncol = 2),
+             matrix(rnorm(400, 4, 0.5), ncol = 2),
+             cbind(rnorm(6, 1.6, 0.15), rnorm(6, 0, 0.15)))
+  y <- factor(rep(c("big1", "big2", "rare"), c(200, 200, 6)))
+  list(X = X, y = y)
+}
+
+test_that("stratified seeding lets a rare class be predicted", {
+  # Any change to RNG call order or floating-point paths sends each seed down
+  # a different trajectory, so the thresholds must hold for any 30 seeds, not
+  # just these. Over 200 seeds, per-seed rare recall has mean 0.88 and sd 0.14
+  # with minPerClass = 5, and mean 0.72 with minPerClass = 0. A 30-seed mean
+  # sits 5 standard errors above 0.75.
+  d <- imbalanced()
+  rare_recall <- function(mpc) {
+    mean(vapply(1:30, function(s) {
+      set.seed(s)
+      m <- AINet$new(nAntibodies = 60, k = 1, maxIter = 5, minPerClass = mpc,
+                     verbose = FALSE)
+      m$fit(d$X, d$y)
+      mean(m$predict(d$X)[d$y == "rare"] == "rare")
+    }, numeric(1)))
+  }
+  stratified <- rare_recall(5)
+  expect_gt(stratified, 0.75)
+  expect_gt(stratified, rare_recall(0))
+})
+
+test_that("seeding quotas follow class shares with a per-class floor", {
+  d <- imbalanced()
+  m <- AINet$new(nAntibodies = 20, minPerClass = 4, verbose = FALSE)
+  seeded <- m$.__enclos_env__$private$.stratified_antibodies(
+    d$X, d$y, m$config)
+  # big classes: round(20 * 200/406) = 10 each; rare: max(4, 0) = 4
+  expect_equal(as.vector(table(seeded$classes)), c(10, 10, 4))
+  expect_equal(nrow(seeded$A), 24L)
+  # rare seeds are drawn from the rare observations
+  rare_rows <- d$X[d$y == "rare", , drop = FALSE]
+  expect_true(all(apply(seeded$A[seeded$classes == "rare", , drop = FALSE], 1,
+                        function(a) any(colSums(t(rare_rows) == a) == 2))))
+})
+
+test_that("unused class levels get no antibodies", {
+  d <- imbalanced()
+  y <- factor(d$y, levels = c(levels(d$y), "empty"))
+  m <- AINet$new(nAntibodies = 10, maxIter = 3, verbose = FALSE)
+  expect_no_error(m$fit(d$X, y))
+  expect_false("empty" %in% m$result$antibody_classes)
+})
+
+test_that("minPerClass is validated and an empty initialization is rejected", {
+  expect_error(AINet$new(minPerClass = -1), "minPerClass")
+  empty_init <- list(generate = function(n, X) X[0, , drop = FALSE])
+  m <- AINet$new(init = empty_init, verbose = FALSE)
+  expect_error(m$fit(X), "non-empty matrix")
+})
+
+test_that("AINet reports when idiotypic regulation falls back", {
+  # On a spread-out repertoire the per-pair rule suppresses every antibody.
+  set.seed(50)
+  m <- AINet$new(nAntibodies = 25, maxIter = 3, verbose = FALSE,
+                 idiotypic = IdiotypicNetwork$new())
+  msgs <- capture_messages(m$fit(X))
+  expect_true(any(grepl("IdiotypicNetwork removed every antibody", msgs)))
+  # A permissive window keeps antibodies and stays quiet.
+  set.seed(50)
+  m <- AINet$new(nAntibodies = 25, maxIter = 3, verbose = FALSE,
+                 idiotypic = IdiotypicNetwork$new(theta_low = 1e-4,
+                                                  theta_high = 0.999,
+                                                  survival_threshold = 0.01))
+  expect_false(any(grepl("IdiotypicNetwork",
+                         capture_messages(m$fit(X)))))
 })
