@@ -178,7 +178,12 @@ rare class (for example a population of a few cells in a cytometry
 sample) often receives no antibody at all and can never be
 predicted. The total can slightly exceed \code{nAntibodies}. Set to 0
 to sample all observations without regard to class. Ignored when an
-\code{init} module is supplied. Default 5.}
+\code{init} module is supplied. Default 5. The guarantee holds at
+seeding only: suppression and idiotypic regulation remove antibodies
+afterwards and can take every one a class had. \code{fit()} reports
+any class that ends with no antibody or that recovers less than half
+of its own training observations, so raise \code{nAntibodies} or
+lower \code{epsilon} when that happens.}
 
 \item{\code{shm}}{An SHMEngine instance or NULL for default uniform mutation.}
 

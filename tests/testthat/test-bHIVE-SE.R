@@ -46,7 +46,11 @@ test_that("y can name a colData column for classification", {
   se <- bHIVE(make_se(), y = "species", nAntibodies = 20, maxIter = 5,
               name = "pred", verbose = FALSE)
   expect_identical(levels(se$pred), levels(iris$Species))
-  expect_gt(mean(se$pred == se$species), 0.6)
+  # This checks the colData plumbing, not accuracy. 20 antibodies over 5
+  # iterations bottomed out at 0.62 across 40 seeds, so 0.6 left no room for
+  # the trajectory shifting on another architecture. 0.5 is still well clear
+  # of the 1/3 chance baseline.
+  expect_gt(mean(se$pred == se$species), 0.5)
   expect_equal(metadata(se)$pred$task, "classification")
 })
 

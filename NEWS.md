@@ -12,6 +12,22 @@ Changes in response to the first round of Bioconductor review.
 * New `bHIVEParam()`, a `BlusterParam` subclass. bHIVE now runs through
   `bluster::clusterRows()` and `bluster::clusterSweep()`.
 
+## Diagnostics
+* Classification fits now report any class that ends with no antibody, or
+  that recovers less than half of its own training observations.
+  `minPerClass` seeds antibodies per class, but suppression and idiotypic
+  regulation remove antibodies afterwards and can take every one a class had.
+  Overall accuracy hides this when the lost class is small: on a 4-class set
+  with a 10-observation rare class, fits scored 0.91 to 0.96 overall while
+  that class recovered 0 to 10% of its own observations. The report is a
+  `message()`, so `suppressMessages()` silences it. No default changed.
+  Sweeping `nAntibodies` from 10 to 160 over 30 seeds on three datasets
+  showed no antibody count that is safe in general: iris stopped losing
+  classes at 40, while a 5-class 20-dimensional simulation still lost one at
+  160. The count that matters depends on class geometry, not on the class
+  count or the sample size, so bHIVE reports the failure rather than
+  guessing a floor.
+
 ## Bug fixes
 * With the default `maxClones = Inf`, clonal selection never cloned or
   mutated an antibody on x86-64 machines (Linux, Windows, Intel Macs).

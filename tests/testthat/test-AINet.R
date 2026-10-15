@@ -807,3 +807,37 @@ test_that("AINet reports when idiotypic regulation falls back", {
   expect_false(any(grepl("IdiotypicNetwork",
                          capture_messages(m$fit(X)))))
 })
+
+# ==== Degenerate-class report ====
+
+test_that("fit() reports a class that loses every antibody", {
+  # A rare class (10 of 310) with few antibodies: minPerClass seeds it, then
+  # suppression removes the seeds and the class becomes unpredictable.
+  set.seed(7)
+  X <- rbind(matrix(rnorm(300 * 2), ncol = 2),
+             matrix(rnorm(10 * 2, mean = 0.4), ncol = 2))
+  y <- factor(rep(c("common", "rare"), c(300, 10)))
+  model <- AINet$new(nAntibodies = 10, maxIter = 5, verbose = FALSE)
+  msg <- capture_messages(model$fit(X, y = y, task = "classification"))
+  expect_match(paste(msg, collapse = ""), "cannot predict every class")
+  expect_match(paste(msg, collapse = ""), "rare kept")
+  # The report is a message, so suppressMessages() silences it.
+  expect_silent(suppressMessages(
+    model$fit(X, y = y, task = "classification")))
+})
+
+test_that("fit() stays quiet when every class survives", {
+  set.seed(8)
+  model <- AINet$new(nAntibodies = 160, maxIter = 10, verbose = FALSE)
+  msg <- capture_messages(
+    model$fit(as.matrix(iris[, 1:4]), y = iris$Species,
+              task = "classification"))
+  expect_false(any(grepl("cannot predict every class", msg)))
+})
+
+test_that("the degenerate-class report is classification only", {
+  set.seed(9)
+  model <- AINet$new(nAntibodies = 10, maxIter = 3, verbose = FALSE)
+  msg <- capture_messages(model$fit(as.matrix(iris[, 1:4])))
+  expect_false(any(grepl("cannot predict every class", msg)))
+})
